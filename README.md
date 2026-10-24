@@ -6,12 +6,16 @@ measuring power, energy, area and timing with open-source tools.
 | file | covers |
 |---|---|
 | [skywater130_flow_notes.md](skywater130_flow_notes.md) | SkyWater 130 nm: OpenLane 2 hardening, sign-off, Icarus gate-level simulation with SDF, OpenSTA per-pin power, SRAM22, latch memories, other sky130 libraries and PDKs |
+| [projects/](projects/) | per project: open items and migration steps from the maintainer; read before every measurement |
+| [inbox/](inbox/README.md) | findings from projects, waiting for the maintainer |
 | [UPSTREAM.md](UPSTREAM.md) | installed versions against upstream, the monthly review procedure, upgrade candidates |
 | [ASAP7_flow_notes.md](ASAP7_flow_notes.md) | ASAP7 (predictive 7 nm): OpenROAD-flow-scripts, library flavours, corners and units, gate-level simulation, power |
 
-Every engineer or AI agent reads the relevant file before flow work and updates it in the same session when they find
-a new pitfall or a mistake, following the versioning rules at the top of each file. Defects found in a specific
-project are handed to that project as `SKY130_FLOW_ISSUES.md` / `ASAP7_FLOW_ISSUES.md` in its folder, not kept here.
+Every engineer or AI agent reads the relevant file before flow work. **Only the maintainer (the general agent of
+`/media/amir`) edits the notes.** Anyone who finds a new pitfall, a mistake or a better fix leaves a note in
+[`inbox/`](inbox/README.md); the owner asks the maintainer to process the inbox. Defects found in a specific
+project, and migrations after a tool update, go to that project's file in [`projects/`](projects/), which its agent
+reads before every measurement. Nothing is written into the project folders.
 
 `UPSTREAM.md` tracks the installed tool and PDK versions against upstream. It is reviewed every month by an automated
 run (`maintenance/`), and the notes

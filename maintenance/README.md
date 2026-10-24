@@ -4,7 +4,7 @@ On the 1st of every month at 04:00, cron runs `run_monthly_review.sh`, which sta
 `/media/amir` with `monthly_review_prompt.md`. The run:
 1. reviews upstream (tools, PDKs, macros) and updates `UPSTREAM.md` and the notes;
 2. re-audits the notes against every project;
-3. updates the projects' issue files, and deletes those whose items are all fixed;
+3. updates the per-project files in `projects/` (never writes into project folders);
 4. does housekeeping (stale paths, memory), and lists clutter for the owner instead of deleting it;
 5. commits and pushes, writes `reports/YYYY-MM.md`, and opens a GitHub issue "Monthly review YYYY-MM" so the owner
    gets a notification.

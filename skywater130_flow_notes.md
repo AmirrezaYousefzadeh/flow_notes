@@ -1,6 +1,6 @@
 # SkyWater 130 nm flow notes: synthesis, hardening, gate-level simulation and power
 
-**Version 2.1, last updated 2026-10-24.** The full history is in "Version history" below.
+**Version 3.0, last updated 2026-10-24.** The full history is in "Version history" below.
 
 Read this before you synthesise, harden or measure anything on sky130 in any project under `/media/amir`. It is
 written for engineers and AI agents. Everything here was learned the hard way, mostly in the NEAT BMI challenge
@@ -11,20 +11,18 @@ ASAP7 has its own notes: `/media/amir/flow_notes/ASAP7_flow_notes.md`.
 
 These notes are for **measuring** power, energy, area and timing. They do not describe a tapeout flow (section 12).
 
-**Keep this file current.** If you, engineer or AI agent, find a new pitfall, a mistake in this file, or a better
-fix, update this file in the same session, before you finish:
-- add the item to the section it belongs to, with its symptom, how to detect it, the fix and, if you measured it, the
-  size of the effect;
-- correct anything that turned out wrong, rather than adding a contradicting note;
-- add the date and the project where it was found, for example "(found 2026-10-23, NEAT_Competition)";
-- add a line to the checklist of section 10 if the problem can be detected automatically;
-- raise the version in the line under the title and add a row to the version history below. Raise the minor number
-  (1.0 → 1.1) for an added or corrected item, the major number (1.x → 2.0) when a recommended practice changes or a
-  section is rewritten.
+**How this file is kept current.** Only the maintainer (the general agent of `/media/amir`) edits this file.
+Engineers and project agents **do not edit it**. When you find a new pitfall, a mistake in this file, a better fix,
+or a measured effect, leave a note in the inbox and carry on:
+- write `/media/amir/flow_notes/inbox/YYYY-MM-DD_<project>_<short-topic>.md`, one note per finding;
+- say which file and section it concerns, the symptom, how you detected it, the fix, the measured size of the effect,
+  and where the evidence is (paths, log lines);
+- say whether it is general or specific to your project.
 
-Tell the owner what you changed. The general agent of `/media/amir` maintains this file and audits it against the
-projects; a defect found in one project's flow is handed to that project as an issue file in its folder
-(`SKY130_FLOW_ISSUES.md`). A lesson that stays in one project's notes will be learned again, expensively, in the next.
+The owner asks the maintainer to process the inbox. The maintainer then updates this file (version bump, history
+row) and deletes the processed note. The maintainer never writes into project folders: what a project must fix or
+change (audit findings, tool migrations) is in `/media/amir/flow_notes/projects/<project>.md`. **Read your
+project's file before every measurement**, and report fixes or disagreements through the inbox.
 
 **Is my copy current?** Record the version you read in your project's notes. At the start of the next session,
 compare it with the line under the title. If the version has changed, read the history rows since your version
@@ -42,6 +40,7 @@ updated. Do not upgrade an installed tool or PDK without the owner's approval.
 | 1.1 | 2026-10-24 | BCI_paper (round 6), reported by the general agent | 8.2: the advice to stop clock propagation at the clock gates was wrong and is now a warning (combinational power disappears with toggle-count activities); two checklist lines; pointer to the ASAP7 notes in 9.3 |
 | 2.0 | 2026-10-24 | all, audit by the general agent | **0 rewritten: all heavy jobs go through the shared `jobq` queue** (all cores at nice 19, no CPU pinning). Corrected: SRAM22 clock-pin conditions are `we`/`ce`, not `ce&rstb` (9.1); clock duty 0.19–1.06 % and combinational share 25–75 % (8.2); NEAT power 8.18 µW (5.4); hold buffers +53 and +930 (6.1, 9.2); Icarus compile about 10 GB (0); `env.sh` scope (1); physical-cell stubs only where the model file lacks the cell (7). New: low-voltage corners (5.7), physical-sign-off settings are measurement-only (5.1, 12), decap and endcap results, `sky130_fd_sc_ms` has no leakage (9.4), ICG fan-out and SRAM clock slew (3, 9.1), power-grid status of BCI and vex2 (9.1), Icarus capacity and Verilator (7.3, 7.4), pin/net activity order (8.1), register initialisation, FIFO deadlock, OpenSTA 2.6 commands, five checklist lines |
 | 2.1 | 2026-10-24 | web check by the general agent | rules checked against tool sources, documentation and issue trackers; sources added. Corrected: 8.2 mechanism is specific to the OpenSTA of OpenLane 2.3.10 (newer OpenSTA stores densities); SRAM22 0.04 ns slew limit fixed upstream on 2026-09-09 (9.1); Icarus honours SDF `TIMESCALE` in master since 2026-09-13 (7.1); OpenLane defaults stated in 5.1; 9-corner sign-off is OpenLane's default (6.2). New: 8.8 what a power number must state; LibreLane `PNR_CORNERS` and `PL_TIME_DRIVEN` default (5.7); OpenSTA version notes (8.1); CTS skew across clock gates (3); precheck contents (12) |
+| 3.0 | 2026-10-24 | owner's decision | **only the maintainer edits this file**; engineers and project agents report findings as notes in `flow_notes/inbox/` (header) |
 
 Contents:
 0. Ground rules on this machine
@@ -142,7 +141,7 @@ the same power to the last digit. Start from it.
 
 Known gaps of the NEAT flow itself: it warns about but does not fail on SDF errors, it does not count
 `Unable to match ModPath`, it starts three Icarus compilations at once, and it runs at `nice 10` with CPU pinning.
-These are listed in `NEAT_Competition/SKY130_FLOW_ISSUES.md`.
+These are listed in `flow_notes/projects/NEAT_Competition.md`.
 
 When you copy a tool (`vcd_toggles.c`, `toggles_to_activity.py`, the sanitiser) into another project, record the
 NEAT commit it came from; Async_inference's copies already differ from NEAT's.
@@ -155,7 +154,7 @@ future reference flow for all of the owner's sky130 projects. It is **not** a re
 - its fixed SRAM22 GDS is git-ignored and exists only in the old untracked clone `skywater/` inside the repository,
   so the current checkout cannot load its own configuration (5.6).
 
-Its `FLOW_ISSUES_FROM_NEAT.md` and `SKY130_FLOW_ISSUES.md` list what it still lacks. Until those are fixed, use the
+Its `FLOW_ISSUES_FROM_NEAT.md` and `flow_notes/projects/sky130-vex2-soc.md` list what it still lacks. Until those are fixed, use the
 NEAT scripts for measurement. Its SRAM22 LEF and liberty fixes (section 9.1) are correct.
 
 ## 3. RTL rules for a design you want to measure
@@ -498,7 +497,7 @@ one cycle after the last word.
 - **Do not waive latch paths in the SDC.** A blanket `set_false_path -from` latches plus a hold waiver at the latch
   data pins hides every latch timing problem, including those of a design that writes latches while it computes.
   NEAT now times all of them; both examples met timing, with 53 and 930 more hold buffers. BCI's latch and
-  register-file cores, KWS and synaptic_delay still waive them (their issue files list where).
+  register-file cores, KWS and synaptic_delay still waive them (their files in `flow_notes/projects/` list where).
 - **Hold buffers at latch inputs** cost area and power in large latch memories. Measure them.
 - **Gate latch rows with `dlclkp` instantiated directly** (glitch-free enable, plain name, recognised by the root-clock
   correction).

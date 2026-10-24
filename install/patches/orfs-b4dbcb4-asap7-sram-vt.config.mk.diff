@@ -1,0 +1,61 @@
+diff --git a/flow/platforms/asap7/config.mk b/flow/platforms/asap7/config.mk
+index 3e4d965..84e97d2 100644
+--- a/flow/platforms/asap7/config.mk
++++ b/flow/platforms/asap7/config.mk
+@@ -204,6 +204,56 @@ ifeq ($(ASAP7_USELVT), 1)
+ 
+ endif
+ 
++# Round 5 (BCI paper): low-leakage SRAM-Vt flavour as the target library (same footprints as RVT)
++ifeq ($(ASAP7_USESRAM), 1)
++   export TIEHI_CELL_AND_PORT     = TIEHIx1_ASAP7_75t_SRAM H
++   export TIELO_CELL_AND_PORT     = TIELOx1_ASAP7_75t_SRAM L
++
++   export MIN_BUF_CELL_AND_PORTS  = BUFx2_ASAP7_75t_SRAM A Y
++
++   export HOLD_BUF_CELL           = BUFx2_ASAP7_75t_SRAM
++
++   export ABC_DRIVER_CELL         = BUFx2_ASAP7_75t_SRAM
++
++   export FILL_CELLS              = FILLERxp5_ASAP7_75t_SRAM FILLER_ASAP7_75t_SRAM DECAPx1_ASAP7_75t_SRAM DECAPx2_ASAP7_75t_SRAM DECAPx4_ASAP7_75t_SRAM DECAPx6_ASAP7_75t_SRAM DECAPx10_ASAP7_75t_SRAM
++
++   export TAP_CELL_NAME           = TAPCELL_ASAP7_75t_SRAM
++
++   export GDS_FILES               = $(PLATFORM_DIR)/gds/asap7sc7p5t_28_SRAM_220121a.gds \
++                                     $(ADDITIONAL_GDS)
++
++   export SC_LEF                  = $(PLATFORM_DIR)/lef/asap7sc7p5t_28_SRAM_1x_220121a.lef
++
++   export LATCH_MAP_FILE          = $(PLATFORM_DIR)/yoSys/cells_latch_SRAM.v
++   export CLKGATE_MAP_FILE        = $(PLATFORM_DIR)/yoSys/cells_clkgate_SRAM.v
++   export ADDER_MAP_FILE         ?= $(PLATFORM_DIR)/yoSys/cells_adders_SRAM.v
++
++   export BC_NLDM_DFF_LIB_FILE         = $(LIB_DIR)/asap7sc7p5t_SEQ_SRAM_FF_nldm_220123.lib
++
++   export BC_NLDM_LIB_FILES            = $(LIB_DIR)/asap7sc7p5t_AO_SRAM_FF_nldm_211120.lib.gz \
++			            $(LIB_DIR)/asap7sc7p5t_INVBUF_SRAM_FF_nldm_220122.lib.gz \
++			            $(LIB_DIR)/asap7sc7p5t_OA_SRAM_FF_nldm_211120.lib.gz \
++			            $(LIB_DIR)/asap7sc7p5t_SIMPLE_SRAM_FF_nldm_211120.lib.gz \
++			            $(LIB_DIR)/asap7sc7p5t_SEQ_SRAM_FF_nldm_220123.lib
++
++   export WC_NLDM_DFF_LIB_FILE         = $(LIB_DIR)/asap7sc7p5t_SEQ_SRAM_SS_nldm_220123.lib
++
++   export WC_NLDM_LIB_FILES            = $(LIB_DIR)/asap7sc7p5t_AO_SRAM_SS_nldm_211120.lib.gz \
++				    $(LIB_DIR)/asap7sc7p5t_INVBUF_SRAM_SS_nldm_220122.lib.gz \
++				    $(LIB_DIR)/asap7sc7p5t_OA_SRAM_SS_nldm_211120.lib.gz \
++				    $(LIB_DIR)/asap7sc7p5t_SEQ_SRAM_SS_nldm_220123.lib \
++				    $(LIB_DIR)/asap7sc7p5t_SIMPLE_SRAM_SS_nldm_211120.lib.gz
++
++   export TC_NLDM_DFF_LIB_FILE         = $(LIB_DIR)/asap7sc7p5t_SEQ_SRAM_TT_nldm_220123.lib
++
++   export TC_NLDM_LIB_FILES            = $(LIB_DIR)/asap7sc7p5t_AO_SRAM_TT_nldm_211120.lib.gz \
++				    $(LIB_DIR)/asap7sc7p5t_INVBUF_SRAM_TT_nldm_220122.lib.gz \
++				    $(LIB_DIR)/asap7sc7p5t_OA_SRAM_TT_nldm_211120.lib.gz \
++				    $(LIB_DIR)/asap7sc7p5t_SEQ_SRAM_TT_nldm_220123.lib \
++				    $(LIB_DIR)/asap7sc7p5t_SIMPLE_SRAM_TT_nldm_211120.lib.gz
++
++endif
++
+ ifeq ($(ASAP7_USESLVT), 1)
+    export TIEHI_CELL_AND_PORT     = TIEHIx1_ASAP7_75t_SL H
+    export TIELO_CELL_AND_PORT     = TIELOx1_ASAP7_75t_SL L

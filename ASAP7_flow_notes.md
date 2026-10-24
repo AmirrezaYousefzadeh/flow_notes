@@ -1,6 +1,6 @@
 # ASAP7 flow notes: synthesis, place and route with ORFS, gate-level simulation and power
 
-**Version 1.3, last updated 2026-10-24.** The full history is in "Version history" below.
+**Version 2.0, last updated 2026-10-24.** The full history is in "Version history" below.
 
 Read this before you synthesise, place and route or measure anything on ASAP7 (the predictive 7 nm library) in any
 project under `/media/amir`. It is written for engineers and AI agents. It collects what BCI_paper (rounds 2–10,
@@ -10,20 +10,20 @@ is not repeated here: shared-machine rules, escaped-name renaming, activity anno
 the reproducibility rules. Read that file too. Most of the problems below fail **silently**: the flow runs to the end
 and prints a plausible number that is wrong. Section 11 is the checklist every measurement must pass.
 
-**Keep this file current.** If you, engineer or AI agent, find a new pitfall, a mistake in this file, or a better
-fix, update this file in the same session, before you finish:
-- add the item to the section it belongs to, with its symptom, how to detect it, the fix and, if you measured it, the
-  size of the effect;
-- correct anything that turned out wrong, rather than adding a contradicting note;
-- add the date and the project where it was found, for example "(found 2026-10-23, KWS)";
-- add a line to the checklist of section 11 if the problem can be detected automatically;
-- move an item out of section 13 (open issues) once it is resolved;
-- raise the version in the line under the title and add a row to the version history below. Raise the minor number
-  (1.0 → 1.1) for an added or corrected item, the major number (1.x → 2.0) when a recommended practice changes or a
-  section is rewritten.
+**How this file is kept current.** Only the maintainer (the general agent of `/media/amir`) edits this file.
+Engineers and project agents **do not edit it**. When you find a new pitfall, a mistake in this file, a better fix,
+or a measured effect, leave a note in the inbox and carry on:
+- write `/media/amir/flow_notes/inbox/YYYY-MM-DD_<project>_<short-topic>.md`, one note per finding;
+- say which file and section it concerns, the symptom, how you detected it, the fix, the measured size of the effect,
+  and where the evidence is (paths, log lines);
+- say whether it is general or specific to your project.
 
-Tell the owner what you changed. If the lesson is not specific to ASAP7, put it in the sky130 notes instead (or as
-well); this file covers what differs on ASAP7 and ORFS.
+The owner asks the maintainer to process the inbox. The maintainer then updates this file (version bump, history
+row) and deletes the processed note. The maintainer never writes into project folders: what a project must fix or
+change (audit findings, tool migrations) is in `/media/amir/flow_notes/projects/<project>.md`. **Read your
+project's file before every measurement**, and report fixes or disagreements through the inbox.
+
+If a lesson is not specific to ASAP7, say so in the note; the maintainer puts it in the sky130 notes.
 
 **Is my copy current?** Record the version you read in your project's notes. At the start of the next session,
 compare it with the line under the title. If the version has changed, read the history rows since your version.
@@ -40,6 +40,7 @@ updated. Do not upgrade an installed tool or PDK without the owner's approval.
 | 1.1 | 2026-10-24 | all | section 0: the shared `jobq` queue in `/media/amir/.jobq` replaces KWS `tools/jobq.py`; open issues handed to each project as `ASAP7_FLOW_ISSUES.md` |
 | 1.2 | 2026-10-24 | all | 9.2: the sky130 notes no longer recommend the clock-propagation stop; 8.1: net activities after pin activities (sky130 notes 7.2) |
 | 1.3 | 2026-10-24 | web check by the general agent | rules checked against upstream ORFS, issue trackers and papers; sources added. Corrected: the adder-map error is a Yosys `extract_fa` bug fixed in Yosys 0.50 (5); `REMOVE_ABC_BUFFERS` replaces the floorplan timing repair and is removed upstream (5); `CTS_BUF_CELL` does nothing in this ORFS (6.4); hold is repaired at CTS too, and the missing hold metric is version-specific (7.2); vendor SEQ models: the X comes from the notifier or the time scale, not from `delayed_*` nets (8.1). New: the RVT `SIMPLE` FF liberty is mis-characterised (3.3); decap `CLASS CORE` only in the SRAM-Vt LEF (6.3); fakeram values are not realistic (3.1); upstream renames (`ASAP7_USE_VT`); `QT_QPA_PLATFORM` reason; routing-congestion levers (6.5) |
+| 2.0 | 2026-10-24 | owner's decision | **only the maintainer edits this file**; engineers and project agents report findings as notes in `flow_notes/inbox/` (header) |
 
 Contents:
 0. Ground rules on this machine
@@ -446,8 +447,8 @@ Everything in sky130 notes section 10, plus:
 
 ## 13. Open issues
 
-Each project has the details and fixes in its own `ASAP7_FLOW_ISSUES.md` (`BCI_paper/`,
-`KWS_neuromorphic_tech_node/`, and a pointer in `synaptic_delay/sky130-snn-bmi/`).
+Each project has the details and fixes in `/media/amir/flow_notes/projects/<project>.md` (BCI_paper,
+KWS_neuromorphic_tech_node, synaptic_delay).
 
 | issue | where | section |
 |---|---|---|

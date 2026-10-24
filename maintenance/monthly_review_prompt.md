@@ -15,30 +15,35 @@ AmirrezaYousefzadeh/flow_notes): `skywater130_flow_notes.md`, `ASAP7_flow_notes.
 2. **Re-audit the notes against the projects.** Every project under `/media/amir` (Async_inference, BCI_paper,
    KWS_neuromorphic_tech_node, NEAT_Competition, sky130-vex2-soc, sparkrv_tapeout, synaptic_delay and any new folder).
    Look at what changed since the last report in `maintenance/reports/` (git logs, new result files, notes such as
-   `LESSONS.md`, run logs, the projects' issue files). Add new general lessons to the notes, correct claims that turned
+   `LESSONS.md`, run logs, inbox notes). Add new general lessons to the notes, correct claims that turned
    out wrong, and check that every path, version and number the notes cite still holds. Use subagents for the
    per-project reading so your own context stays small.
-3. **Issue files.** For each `SKY130_FLOW_ISSUES.md`, `ASAP7_FLOW_ISSUES.md` and `FLOW_ISSUE(S)_FROM_NEAT.md`:
-   - check which items the project fixed (and verify the fix where it is cheap to do so);
-   - when every item is marked fixed or dismissed, delete the file;
-   - add newly found defects of that project to its issue file (same style: evidence, fix, how to verify);
+3. **Project files** (`flow_notes/projects/<project>.md`, one per project; create one for a new project):
+   - check which items the project has fixed (look at its files; verify where cheap), and mark them done with the
+     date, or remove items that are done and verified;
+   - add newly found defects and migration steps (same style: evidence, fix, how to verify);
    - correct stale paths or facts in them.
-4. **Housekeeping.**
+   Never write into a project folder. `FLOW_ISSUE(S)_FROM_NEAT.md` files in project folders were written by the NEAT
+   agent; leave them, but mention in the report if they look resolved.
+4. **Inbox.** List every note in `inbox/` (other than its README) in the report with a one-line summary. Do not act
+   on them: the owner asks for inbox processing separately.
+5. **Housekeeping.**
    - Shared memory in `/home/yousefzadeha/.claude/projects/-media-amir/memory/`: fix stale paths, mark superseded
      facts, merge duplicates, keep `MEMORY.md` one line per note and consistent with the notes.
    - Broken symlinks and references to paths that no longer exist (for example `/home/yousefzadeha/workspace/...`) in
-     notes, issue files and memory: fix them.
+     notes, project files and memory: fix them.
    - Anything else that looks like clutter (old build or run directories, stale scratch copies, untracked clones,
      large unused files): do **not** delete it; list it in the report with its size and why it looks unused.
-5. **Version and publish.** Follow the versioning rules at the top of each notes file (version bump, history row).
+6. **Version and publish.** Follow the versioning rules at the top of each notes file (version bump, history row).
    Commit with `git -c user.name="Amirreza Yousefzadeh" -c user.email=a.yousefzadeh@utwente.nl commit`, ending the
    message with `Co-Authored-By: Claude <noreply@anthropic.com>`, and push with
    `git -c credential.helper='!gh auth git-credential' push`.
-6. **Report.** Write `maintenance/reports/YYYY-MM.md` (commit and push it too) with:
+7. **Report.** Write `maintenance/reports/YYYY-MM.md` (commit and push it too) with:
    - what changed upstream and what you changed in the notes (with versions);
-   - which project issues were fixed, which are new, which issue files were deleted;
+   - which project items were fixed, which are new;
    - housekeeping done, and clutter proposed for deletion (path, size, reason);
    - **upgrade candidates** for tools and PDK, with expected effect and risk;
+   - pending inbox notes;
    - anything you could not do or check.
    Then open a GitHub issue in AmirrezaYousefzadeh/flow_notes titled "Monthly review YYYY-MM" whose body is the
    report's summary and a link to the report, so the owner is notified:
@@ -47,8 +52,7 @@ AmirrezaYousefzadeh/flow_notes): `skywater130_flow_notes.md`, `ASAP7_flow_notes.
 ## Never, in this unattended run
 
 - install, upgrade, remove or switch any tool, PDK, Nix profile, Python package or ORFS checkout;
-- change project source code, scripts, configurations, results or papers (only the issue files listed above);
-- delete anything except fully resolved issue files;
+- write, change or delete anything inside a project folder (only `flow_notes/` and the shared memory);
 - edit any file named `Amir_toughts.md` or `amir_toughts.md`;
 - run heavy jobs (simulations, hardening, power runs). If a check needs one, propose it in the report;
 - start more than three subagents at once.
