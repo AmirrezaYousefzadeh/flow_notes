@@ -1,29 +1,28 @@
 # flow_notes
 
-Shared flow knowledge for the hardware projects under `/media/amir`: what was learned, mostly the hard way, about
-measuring power, energy, area and timing with open-source tools.
+Shared, general knowledge for measuring power, energy, area and timing with open-source hardware tools on this
+machine, plus the maintained tools and the record of installed tool and PDK versions. Maintained by the general agent
+of `/media/amir` (the maintainer), who also owns the installed tools and PDKs.
 
-| file | covers |
+**For users (engineers and project agents):**
+
+| file | read it |
 |---|---|
-| [skywater130_flow_notes.md](skywater130_flow_notes.md) | SkyWater 130 nm: OpenLane 2 hardening, sign-off, Icarus gate-level simulation with SDF, OpenSTA per-pin power, SRAM22, latch memories, other sky130 libraries and PDKs |
-| [projects/](projects/) | per project: open items and migration steps from the maintainer; read before every measurement |
-| [inbox/](inbox/README.md) | findings from projects, waiting for the maintainer |
-| [UPSTREAM.md](UPSTREAM.md) | installed versions against upstream, the monthly review procedure, upgrade candidates |
-| [ASAP7_flow_notes.md](ASAP7_flow_notes.md) | ASAP7 (predictive 7 nm): OpenROAD-flow-scripts, library flavours, corners and units, gate-level simulation, power |
+| [ANNOUNCEMENTS.md](ANNOUNCEMENTS.md) | at the start of every measurement campaign: new default versions, changed rules |
+| [skywater130_flow_notes.md](skywater130_flow_notes.md) | before any sky130 work: OpenLane 2 hardening, sign-off, Icarus gate-level simulation with SDF, OpenSTA per-pin power, SRAM22, latch memories, other sky130 libraries and PDKs |
+| [ASAP7_flow_notes.md](ASAP7_flow_notes.md) | before any ASAP7 work: OpenROAD-flow-scripts, library flavours, corners and units, gate-level simulation, power |
+| [tools/](tools/README.md) | maintained reference tools the notes refer to; copy them, and record the commit you copied |
+| [inbox/](inbox/README.md) | to report a finding, a fix or a disagreement: leave one note per finding |
 
-Every engineer or AI agent reads the relevant file before flow work. **Only the maintainer (the general agent of
-`/media/amir`) edits the notes.** Anyone who finds a new pitfall, a mistake or a better fix leaves a note in
-[`inbox/`](inbox/README.md); the owner asks the maintainer to process the inbox. Defects found in a specific
-project, and migrations after a tool update, go to that project's file in [`projects/`](projects/), which its agent
-reads before every measurement. Nothing is written into the project folders.
+Only the maintainer edits anything here. The notes are general and do not refer to individual projects; keeping a
+project in step with them and with the announcements is that project's responsibility.
 
-`UPSTREAM.md` tracks the installed tool and PDK versions against upstream. It is reviewed every month by an automated
-run (`maintenance/`), and the notes
-are updated when upstream fixes or changes something they rely on. Upgrades are installed only with the owner's
-approval.
+**For the maintainer and the owner:**
 
-On the workstation the repository is `/media/amir/flow_notes/`; read the notes there.
+| file | what |
+|---|---|
+| [UPSTREAM.md](UPSTREAM.md) | installed versions against upstream, review procedure, upgrade candidates |
+| [maintenance/](maintenance/README.md) | the monthly automated review (cron, 1st of the month) and its reports |
+| [install/](install/) | how each tool and PDK version was installed, and the patches applied |
 
-**Who reads what.** Designer agents and engineers read the two notes files: their section 1 states the installed
-versions they must use. `UPSTREAM.md` and `maintenance/` are for the maintainer (the general agent of `/media/amir`)
-and the owner: the upstream comparison, the monthly review (`maintenance/README.md`) and its reports.
+The maintainer processes the inbox (acts, updates notes or tools, announces, deletes the note) and keeps it empty.

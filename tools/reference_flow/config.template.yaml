@@ -1,0 +1,31 @@
+# NEAT BMI decoder challenge: the OpenLane 2 configuration of every submission. flow/harden.sh fills the @...@ fields from
+# submission.json (RTL files, include directory, clock period) and from the attempt (utilisation, placement density);
+# flow/tools/macro_config.py adds the SRAM22 macros and their floorplan. Everything else is fixed:
+#   sky130A / sky130_fd_sc_hd, sign-off at the typical corner (tt, 1.8 V, 25 C) by flow/tools/check_metrics.py,
+#   decap-free fill, no antenna repair, hold margins of 0.5 ns. The flow stops after sign-off STA (no GDS streamout,
+#   no Magic/KLayout DRC, no LVS): routing DRC errors are those of the detailed router.
+DESIGN_NAME: neat_decoder
+VERILOG_FILES: @FILES@
+VERILOG_INCLUDE_DIRS: @INCDIRS@
+VERILOG_DEFINES: [NEAT_SYNTH]        # defined for synthesis only (the examples select the sky130 clock-gate cell with it)
+CLOCK_PORT: clk
+CLOCK_PERIOD: @CLK@
+PNR_SDC_FILE: @SDC@
+SIGNOFF_SDC_FILE: @SDC@
+STD_CELL_LIBRARY: sky130_fd_sc_hd
+DRT_THREADS: @DRT_THREADS@           # NEAT_THREADS - 2 (env/env.sh)
+STA_THREADS: 2
+FP_SIZING: relative
+FP_CORE_UTIL: @UTIL@
+PL_TARGET_DENSITY_PCT: @DENS@
+DECAP_CELL: []                       # decap-free fill: the measured leakage is that of the logic (and the macros)
+RUN_HEURISTIC_DIODE_INSERTION: false # heuristic diodes break legalisation at high utilisation; diodes on input ports only
+DIODE_ON_PORTS: in
+RUN_ANTENNA_REPAIR: false
+GRT_ALLOW_CONGESTION: true           # let a congested design reach detailed routing; the watchdog of harden.sh stops it
+PL_RESIZER_HOLD_SLACK_MARGIN: 0.5    # hold margins (ns): robust gate-level timing, at the price of hold buffers
+GRT_RESIZER_HOLD_SLACK_MARGIN: 0.5
+PL_RESIZER_HOLD_MAX_BUFFER_PCT: 80
+GRT_RESIZER_HOLD_MAX_BUFFER_PCT: 80
+ERROR_ON_SYNTH_CHECKS: false
+RUN_LINTER: false

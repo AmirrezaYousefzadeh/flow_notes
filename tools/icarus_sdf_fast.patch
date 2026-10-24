@@ -1,0 +1,90 @@
+--- a/vpi/sys_sdf.c
++++ b/vpi/sys_sdf.c
+@@ -38,22 +38,59 @@
+ static vpiHandle sdf_cur_cell;
+ static char* sdf_fname = NULL;
+ 
+-static vpiHandle find_scope(vpiHandle scope, const char*name)
+-{
+-      vpiHandle idx = vpi_iterate(vpiModule, scope);
+-	/* If this scope has no modules then it can't have the one we
+-	 * are looking for so just return 0. */
+-      if (idx == 0) return 0;
+-
+-      vpiHandle cur;
++/*
++ * sdf_fast: the same lookup as Icarus' find_scope (the child module of scope named name), but through a hash table of the
++ * children of the last scope looked up, built on its first lookup. The original scans all children (vpi_iterate copies them)
++ * for every SDF cell, O(cells^2): hours for a flat netlist of ~500k cells.
++ */
++static vpiHandle cache_scope = 0;
++static char**cache_name = 0;
++static vpiHandle*cache_handle = 0;
++static size_t cache_size = 0;
++
++static size_t name_hash(const char*name)
++{
++      size_t h = 1469598103934665603ULL;
++      for ( ; *name ; name += 1) h = (h ^ (unsigned char)*name) * 1099511628211ULL;
++      return h;
++}
++
++static void cache_build(vpiHandle scope)
++{
++      size_t i, n = 0;
++      vpiHandle idx, cur;
++      for (i = 0 ; i < cache_size ; i += 1) free(cache_name[i]);
++      free(cache_name); free(cache_handle);
++      cache_name = 0; cache_handle = 0; cache_size = 0; cache_scope = scope;
++      idx = vpi_iterate(vpiModule, scope);
++      if (idx == 0) return;
++      while ( (cur = vpi_scan(idx)) ) n += 1;
++      cache_size = 2;
++      while (cache_size < 2 * n) cache_size *= 2;
++      cache_name = calloc(cache_size, sizeof(char*));
++      cache_handle = calloc(cache_size, sizeof(vpiHandle));
++      idx = vpi_iterate(vpiModule, scope);
+       while ( (cur = vpi_scan(idx)) ) {
+-
+-	    if ( strcmp(name, vpi_get_str(vpiName,cur)) == 0) {
+-		  vpi_free_object(idx);
+-		  return cur;
++	    const char*name = vpi_get_str(vpiName, cur);
++	    size_t h = name_hash(name) & (cache_size - 1);
++	    while (cache_name[h]) {
++		  if (strcmp(cache_name[h], name) == 0) break;   /* duplicate name: keep the first, as the scan would */
++		  h = (h + 1) & (cache_size - 1);
+ 	    }
++	    if (cache_name[h] == 0) { cache_name[h] = strdup(name); cache_handle[h] = cur; }
+       }
++}
+ 
++static vpiHandle find_scope(vpiHandle scope, const char*name)
++{
++      size_t h;
++      if (scope != cache_scope || cache_name == 0) cache_build(scope);
++      if (cache_size == 0) return 0;
++      h = name_hash(name) & (cache_size - 1);
++      while (cache_name[h]) {
++	    if (strcmp(cache_name[h], name) == 0) return cache_handle[h];
++	    h = (h + 1) & (cache_size - 1);
++      }
+       return 0;
+ }
+ 
+@@ -490,11 +527,13 @@
+       vpiHandle res;
+ 
+       tf_data.type      = vpiSysTask;
+-      tf_data.tfname    = "$sdf_annotate";
++      tf_data.tfname    = "$sdf_annotate_fast";
+       tf_data.calltf    = sys_sdf_annotate_calltf;
+       tf_data.compiletf = sys_sdf_annotate_compiletf;
+       tf_data.sizetf    = 0;
+-      tf_data.user_data = "$sdf_annotate";
++      tf_data.user_data = "$sdf_annotate_fast";
+       res = vpi_register_systf(&tf_data);
+       vpip_make_systf_system_defined(res);
+ }
++
++void (*vlog_startup_routines[])(void) = { sys_sdf_register, 0 };

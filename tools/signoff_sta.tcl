@@ -1,0 +1,20 @@
+# Sign-off timing of a routed run at the typical corner, with the parasitics of every net (flow/harden.sh).
+# OpenLane's own sign-off reads the SPEF of the original netlist, whose escaped hierarchical names it cannot match
+# (flow/tools/legal_names.py): the nets inside sub-modules would be timed without their wires. This script reads the
+# renamed netlist and SPEF instead, so that every net has its parasitics.
+# Env: LIB_SC (liberty files), LIB_MACROS (optional), NETLIST, SPEF, TOP, SDC (and the variables it reads), OUT
+foreach l $::env(LIB_SC) { read_liberty $l }
+if {[info exists ::env(LIB_MACROS)]} { foreach l $::env(LIB_MACROS) { read_liberty $l } }
+read_verilog $::env(NETLIST)
+link_design $::env(TOP)
+read_spef $::env(SPEF)
+read_sdc $::env(SDC)
+file mkdir $::env(OUT)
+report_checks -path_delay max -group_count 20 -fields {slew cap input_pins} -digits 4 > $::env(OUT)/max.rpt
+report_checks -path_delay min -group_count 20 -fields {slew cap input_pins} -digits 4 > $::env(OUT)/min.rpt
+report_check_types -max_slew -max_capacitance -violators > $::env(OUT)/slew_cap_violators.rpt
+puts "SIGNOFF setup_ws [sta::worst_slack_cmd max]"
+puts "SIGNOFF hold_ws [sta::worst_slack_cmd min]"
+puts "SIGNOFF setup_tns [sta::total_negative_slack_cmd max]"
+puts "SIGNOFF hold_tns [sta::total_negative_slack_cmd min]"
+exit
