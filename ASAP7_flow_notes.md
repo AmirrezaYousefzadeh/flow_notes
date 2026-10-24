@@ -1,6 +1,6 @@
 # ASAP7 flow notes: synthesis, place and route with ORFS, gate-level simulation and power
 
-**Version 1.2, last updated 2026-10-24.** The full history is in "Version history" below.
+**Version 1.3, last updated 2026-10-24.** The full history is in "Version history" below.
 
 Read this before you synthesise, place and route or measure anything on ASAP7 (the predictive 7 nm library) in any
 project under `/media/amir`. It is written for engineers and AI agents. It collects what BCI_paper (rounds 2–10,
@@ -28,6 +28,10 @@ well); this file covers what differs on ASAP7 and ORFS.
 **Is my copy current?** Record the version you read in your project's notes. At the start of the next session,
 compare it with the line under the title. If the version has changed, read the history rows since your version.
 
+**Upstream.** The tools and PDKs change quickly. `UPSTREAM.md` in this folder lists the installed versions against
+upstream and is reviewed monthly; when upstream fixes a bug that one of these rules works around, the rule is
+updated. Do not upgrade an installed tool or PDK without the owner's approval.
+
 ### Version history
 
 | version | date | project | change |
@@ -35,6 +39,7 @@ compare it with the line under the title. If the version has changed, read the h
 | 1.0 | 2026-10-24 | all | first version: BCI_paper and KWS records, the chat histories, and an audit of both projects' ASAP7 flows |
 | 1.1 | 2026-10-24 | all | section 0: the shared `jobq` queue in `/media/amir/.jobq` replaces KWS `tools/jobq.py`; open issues handed to each project as `ASAP7_FLOW_ISSUES.md` |
 | 1.2 | 2026-10-24 | all | 9.2: the sky130 notes no longer recommend the clock-propagation stop; 8.1: net activities after pin activities (sky130 notes 7.2) |
+| 1.3 | 2026-10-24 | web check by the general agent | rules checked against upstream ORFS, issue trackers and papers; sources added. Corrected: the adder-map error is a Yosys `extract_fa` bug fixed in Yosys 0.50 (5); `REMOVE_ABC_BUFFERS` replaces the floorplan timing repair and is removed upstream (5); `CTS_BUF_CELL` does nothing in this ORFS (6.4); hold is repaired at CTS too, and the missing hold metric is version-specific (7.2); vendor SEQ models: the X comes from the notifier or the time scale, not from `delayed_*` nets (8.1). New: the RVT `SIMPLE` FF liberty is mis-characterised (3.3); decap `CLASS CORE` only in the SRAM-Vt LEF (6.3); fakeram values are not realistic (3.1); upstream renames (`ASAP7_USE_VT`); `QT_QPA_PLATFORM` reason; routing-congestion levers (6.5) |
 
 Contents:
 0. Ground rules on this machine
@@ -96,11 +101,14 @@ nix ... develop --accept-flake-config /media/hardware_design_tools/openlane2 -c 
    OPENROAD_EXE=\$(which openroad) YOSYS_EXE=\$(which yosys) KLAYOUT_CMD=\$(which klayout)"
 ```
 
-- **`QT_QPA_PLATFORM=offscreen` is required.** Without it `6_report` aborts on a Qt plugin error (signal 6, rc=2) even
+- **`QT_QPA_PLATFORM=offscreen` is required.** The ORFS Makefile sets it only when `DISPLAY` is empty; under ssh or
+  VS Code `DISPLAY` is set but unusable (ORFS issue #3034). Without it `6_report` aborts on a Qt plugin error (signal 6, rc=2) even
   when the route is clean, and an acceptance script rejects a good run (BCI round 6: g32p50 was first rejected at 60 %).
 - **The local patch.** `git status` shows `flow/platforms/asap7/config.mk` modified: BCI added the `ASAP7_USESRAM`
   block (lines 207–255) and the untracked `yoSys/cells_{latch,clkgate,adders}_SRAM.v` (sed copies of the `_R` files)
-  in September 2026. Upstream ORFS at this commit has no SRAM-Vt flavour. If the patch is lost, `ASAP7_USESRAM=1` is
+  in September 2026. ORFS ships the SRAM-Vt liberties, LEF and GDS, but no switch selects them, at this commit and
+  still upstream; upstream replaced `ASAP7_USELVT`/`ASAP7_USESLVT` by `ASAP7_USE_VT` (RVT, LVT, SLVT), so the local
+  patch will conflict if ORFS is ever updated. If the patch is lost, `ASAP7_USESRAM=1` is
   silently ignored and the run uses RVT: after synthesis, check that `objects/.../lib/` holds `*_SRAM_*` files.
   - The block assigns with `=`, because with `?=` the RVT defaults won and the flow failed with
     `TAP-0010 Master TAPCELL_ASAP7_75t_R not found` (BCI, 2026-09-19). Side effect: it also forces `FILL_CELLS`,
@@ -133,7 +141,9 @@ section 13 as you go.
 **3.1 Flavours.** Cell names end in `_ASAP7_75t_<f>`: `R` (RVT), `L` (LVT), `SL` (SLVT), `SRAM` (SRAM-Vt, the
 lowest-leakage flavour, available here only through the local patch). Footprints are identical.
 - **"asap7sram" in BCI is not an SRAM macro**; it is the SRAM-Vt standard-cell flavour. No project has used the
-  platform's fakeram macros: every memory so far is flat latches or flip-flops.
+  platform's fakeram macros: every memory so far is flat latches or flip-flops. The fakeram7 macros are common in
+  academic ASAP7 work for area and placement, but their own `fakeram.cfg` says "VALUES NOT REALISTIC": never use them
+  for energy or timing claims.
 - BCI round 3 made "SRAM-Vt" by swapping liberties on the routed RVT netlist (sed); rounds 5–10 hardened natively
   with `ASAP7_USESRAM=1`. Rows labelled SRAM-Vt mean different things in different rounds.
 - The owner's choice (BCI round 5, KWS decision 13): SRAM-Vt is the primary ASAP7 result, hardened rather than
@@ -150,7 +160,8 @@ lowest-leakage flavour, available here only through the local patch). Footprints
 
 ASAP7 lists every leakage state twice, with `related_pg_pin : VDD` (the value) and `VSS` (0). Averaging all groups
 halves the result: `BCI_paper/sw/asap7_leakage.py` does that, and the BCI paper's ratios (3×, 14×, 132×, 1336×) are
-too low by 2× (open, section 13). Average only the VDD groups. OpenSTA's design leakage is not affected.
+too low by 2× (open, section 13). Average only the VDD groups. The flavour ratios (4.4×, 9.7×, 10.1× between
+neighbours) agree with the off-currents of the ASAP7 tutorial (0.1 / 1 / 10 / 100 nA/µm for SRAM / RVT / LVT / SLVT). OpenSTA's design leakage is not affected.
 
 **3.3 Corners.**
 
@@ -160,12 +171,18 @@ too low by 2× (open, section 13). Average only the VDD groups. OpenSTA's design
 | FF | 0.77 V, 0 °C | `BC` | 25C (wrong) |
 | SS | 0.63 V, 100 °C | `WC` | 100C |
 
-- **ORFS optimises at FF by default.** `platforms/asap7/config.mk:311` has `export CORNER ?= BC`, and no script on
+- **ORFS optimises at FF by default**, for historical reasons (a maintainer chose BC because of a problem reading the
+  TT flip-flop library, ORFS issue #231); it is still the default upstream, so upstream ORFS QoR numbers are FF
+  numbers too, while papers usually report TT 0.7 V 25 °C. `platforms/asap7/config.mk:311` has `export CORNER ?= BC`, and no script on
   this machine sets `CORNER`. Every BCI and KWS synthesis, repair, CTS and `6_report` ran on the FF libraries, while
   power was taken at TT. So BCI's "hold repair at the typical corner" (`run_log_round6.md`) and KWS's "TT 0.7 V 25 C"
   (`README.md`, `harden_asap7.sh`) are wrong (found 2026-10-24, audit). Pass `CORNER=TC` to optimise at TT, or sign
   off yourself at the corner you report (section 7), and write the corner into the result file.
-- The platform temperatures for BC and TC are swapped relative to the liberties (they matter only for IR-drop
+- **The RVT `SIMPLE` FF liberty is mis-characterised**: `asap7sc7p5t_SIMPLE_RVT_FF_nldm_211120.lib.gz` says 0.7 V,
+  25 °C while the other FF files say 0.77 V, 0 °C (asap7sc7p5t_28 issue #3; re-characterised upstream in ORFS commit
+  `3a376ac`, 2026-02-23, as a `_250407` file). Our RVT runs at the default BC corner used it; SRAM-Vt is fine. Another
+  reason to optimise at `TC`.
+- The platform temperatures for BC and TC are swapped relative to the liberties (still so upstream) (they matter only for IR-drop
   reports). The "0.77 V supply" in ORFS IR reports is the FF voltage, not an IR-drop figure.
 - **SS is leakage-dominated.** At 100 °C, RVT sp leakage is 46.5 µW against 3.3 µW at TT, while dynamic energy drops
   35 %. Total energy per bin 0.175 nJ at SS against 0.058 nJ at TT (BCI round 5). Report dynamic and leakage
@@ -194,6 +211,8 @@ too low by 2× (open, section 13). Average only the VDD groups. OpenSTA's design
   behavioural model for RTL simulation. The platform marks `ICG*`, `SDF*`, `*xp*` and `*x1p*` as don't-use
   (`config.mk:77-78`), which stops synthesis from choosing them but not direct instantiation. The ASAP7 ICGs are true
   integrated clock gates (`clock_gating_integrated_cell : latch_posedge_precontrol`), which matters for power (9.2).
+  ORFS's portable alternative is to instantiate `OPENROAD_CLKGATE` (`CK`, `E`, `GCK`) and add `OPENROAD_CLKGATE` to
+  `VERILOG_DEFINES`; `CLKGATE_MAP_FILE` maps it to `ICGx1`.
 - **Retarget every sky130 cell.** BCI's latch core failed in ORFS within 1 s because sky130 `dlclkp_1` gates were left
   in the RTL (BCI round 5). Grep the RTL for `sky130_` before an ASAP7 run.
 - **Latches** are inferred (`always @*`) and mapped by `cells_latch_<f>.v` to `DHLx1` (active high) and `DLLx1`
@@ -214,10 +233,10 @@ Settings that every ASAP7 config needs (`run_orfs5.sh`, `harden_asap7.sh`):
 
 | setting | why |
 |---|---|
-| `ADDER_MAP_FILE :=` (empty) | **The platform FA/HA techmap (`cells_adders_*.v`) produces wrong netlists**: outputs off by ±2 against the RTL, already in `1_synth.v`, same on NanGate45. A SAT miter found a counterexample (an accumulator wrong 11 cycles after reset). With the map disabled, the netlists are bit-exact (BCI, 2026-09-12). Not reported upstream. |
+| `ADDER_MAP_FILE :=` (empty) | **Adder mapping produces wrong netlists**: outputs off by ±2 against the RTL, already in `1_synth.v`, same on NanGate45. A SAT miter found a counterexample (an accumulator wrong 11 cycles after reset). With the map disabled, the netlists are bit-exact (BCI, 2026-09-12). The likely cause is Yosys `extract_fa`, which ORFS runs before this techmap: it miscompiled xor3/xnor3 polarity before Yosys 0.50 (YosysHQ PR #4691, 2025-02; issue #3660). Our Yosys is 0.46, so keep the map off. ORFS's `EQUIVALENCE_CHECK=1` runs an equivalence check around repair. |
 | `SYNTH_MEMORY_MAX_BITS` | The default 4096 aborts with "Synthesized memory size exceeds maximum allowed bits" on case-statement ROMs. BCI 65536, KWS 1e6. |
 | `ABC_AREA=1` | Fewer cells and fanout violations; it closed IHP routing in BCI and is used for ASAP7 too. |
-| `REMOVE_ABC_BUFFERS=1` | Skips the floorplan-stage wire-load repair, which hit `RSZ-0060 Max buffer count reached` through nested clock gates at a 200 ns clock (BCI, 2026-09-19). |
+| `REMOVE_ABC_BUFFERS=1` | Runs `remove_buffers` *instead of* the floorplan-stage `repair_timing` (setup and hold with ideal clocks), whose hold repair hit `RSZ-0060 Max buffer count reached` through nested clock gates at a 200 ns clock (BCI, 2026-09-19). Removed upstream (ORFS PR #4580, 2026-10-21); there, `SKIP_FLOORPLAN_REPAIR_TIMING` and `SETUP_SLACK_MARGIN` are the levers. |
 
 - **Count cells from the netlist plus all five liberty files** (AO, INVBUF, OA, SEQ, SIMPLE), not from flow metrics,
   which include taps, fill and, for SRAM-Vt, decaps (6.3).
@@ -247,21 +266,25 @@ Settings that every ASAP7 config needs (`run_orfs5.sh`, `harden_asap7.sh`):
   the accepted KWS run, 796 602 decaps covered 69 % of the core, and the report showed "98 % utilisation" at
   `CORE_UTILIZATION=20` (KWS, 2026-10-22). Fix: pass `FILL_CELLS='FILLERxp5_ASAP7_75t_SRAM FILLER_ASAP7_75t_SRAM'`
   on the `make` command line. No run since this fix has reached the fill stage, so it is unverified.
-- The SRAM-Vt LEF declares `DECAPx*_SRAM` as `CLASS CORE`, not `SPACER`, so ORFS counts decaps as standard cells:
+- DECAPs are in the default `FILL_CELLS` for RVT too, locally and upstream. The RVT, LVT and SLVT LEFs declare them
+  `CLASS CORE SPACER`, but the SRAM-Vt LEF declares `DECAPx*_SRAM` as `CLASS CORE`, so ORFS counts decaps as standard cells:
   BCI sp_sram reported utilisation 0.94 against 0.66 and area 3 441 against 2 469 µm². Report logic-only area.
 - Decaps, fillers and taps have no ASAP7 liberty, so they cost area, routing and simulation time, not power (9.3).
 
-**6.4 Clock-tree synthesis.** Without `CTS_BUF_CELL`, CTS used `BUFx24` for every clock buffer: 56 466 buffers and
+**6.4 Clock-tree synthesis.** CTS used `BUFx24` for every clock buffer: 56 466 buffers and
 59 764 clock nets in the KWS core (one tree per 512-latch row); the clock tree took 12.8 µW of 30.6 µW leakage.
-Setting a smaller CTS buffer is a candidate fix, not yet tested.
+Setting a smaller CTS buffer is a candidate fix, not yet tested. **`CTS_BUF_CELL` does nothing in this ORFS** (removed
+as obsolete in ORFS PR #2029, 2024-05; `cts.tcl` never reads it): pass `-buf_list` through `CTS_ARGS` (which replaces
+all CTS arguments) or restrict with don't-use; upstream has `CTS_BUF_LIST`.
 
 **6.5 Failures seen and their fixes.**
 - `GRT-0119` global-routing congestion: BCI m12 at 60 % (closed at 50 %); KWS r2h96 cores at 20, 15 and 10 % after up
-  to 7.5 h, although an older core of similar size routed at 20 %. Derated routing resources were 50–63 % per layer.
-  Unresolved (section 13).
+  to 7.5 h, although an older core of similar size routed at 20 %. Derated routing resources were 50–63 % per layer:
+  this ORFS sets `ROUTING_LAYER_ADJUSTMENT ?= 0.5` (upstream now 0.25). Levers: `ROUTING_LAYER_ADJUSTMENT`,
+  `MAX_ROUTING_LAYER` (default M7), `PLACE_DENSITY`. Unresolved (section 13).
 - "stack smashing detected" (signal 6) in timing-driven global placement ("executing resizer for reweighting nets"),
   in two KWS runs. The same crash in OpenLane was fixed by turning timing-driven placement off; the ORFS equivalent
-  `GPL_TIMING_DRIVEN=0` is untested.
+  `GPL_TIMING_DRIVEN=0` is untested (no upstream report found).
 - Detailed routing out of memory: BCI's 400 k-instance latch core at 19 GB, a KWS core at 29.6 GB in the first
   iteration (possibly because of a 40 GB cgroup limit shared with another job). Declare memory per section 10.
 - Rerunning `do-5_2_route` from a copied `5_1_grt.odb` fails because `detail_route.tcl` needs
@@ -285,8 +308,9 @@ ORFS also leaves 40–390 max-slew violations per run (BCI). The scripts ignore 
 6.2), because ORFS signs off at FF by default (3.3). A reported setup slack of 0.00 on latch paths is time borrowing,
 not a zero margin (KWS `6_finish.rpt`).
 
-**7.2 Hold: ORFS does not report it for ASAP7.** `6_report.json` has no `finish__timing__hold__ws` in this ORFS, so
-scripts read "NA" and accept.
+**7.2 Hold: this ORFS reports no hold slack** (on any platform; the metric was added upstream in March 2025).
+`6_report.json` has no `finish__timing__hold__ws`, so scripts read "NA" and accept. Hold is repaired at CTS and after
+global routing, and never after detailed routing (still so upstream).
 - The accepted KWS run had `finish__timing__drv__hold_violation_count: 187`, worst −154 ps at FF. Global routing
   showed none; they appear only after RCX extraction, and ORFS repairs nothing after detailed routing.
 - BCI's own check (`hold_sta.tcl`, TT/SS/FF with SPEF) found m12 at −12 ps (RVT) and −14 ps (SRAM-Vt) at FF, and
@@ -303,8 +327,9 @@ scripts read "NA" and accept.
 **8.1 Icarus with SDF** (BCI round 5, bit-exact against the RTL over 200 and 5 000 bins; zero `SDF ERROR` lines):
 - **ORFS writes no SDF.** Write it with OpenSTA (`run_write_sdf.sh`): netlist, SPEF, TT liberties, propagated clock,
   `write_sdf -divider / -include_typ -digits 4`.
-- **Vendor SEQ models stay X.** They use `altos_dff` UDPs with an uninitialised notifier and are clocked from
-  `delayed_*` nets that only `$setuphold` drives. Annotated runs completed 0 bins in 7 h. Replace them with
+- **Vendor SEQ models stay X.** They use `altos_dff` UDPs with an uninitialised notifier. Annotated runs completed 0
+  bins in 7 h. (BCI blamed the `delayed_*` nets, but our Icarus drives them since iverilog PR #966; the X more likely
+  came from the notifier or the ps/ns time scale. Retest on a small case before relying on either explanation.) Replace them with
   `BCI_paper/sim/asap7_seq_icarus.v` (behavioural, IOPATH-only specify blocks) and keep the vendor AO, INVBUF, OA and
   SIMPLE models. Zero-delay runs work with the vendor models.
 - **Rescale the SDF.** Icarus ignores `(TIMESCALE 1ps)` and reads 113 ps as 113 ns; the core stalled for 7 h.
@@ -312,7 +337,7 @@ scripts read "NA" and accept.
 - **ICG rise delay becomes 0** (found 2026-10-24, audit, confirmed with a small Icarus run). After the sanitiser
   unwraps the conditional ICG paths, the zero-filled rise triplets come last and override the unconditional value:
   `CLK→GCLK` rise is 0 instead of about 36 ps. Effect on glitch counts not measured.
-- **Delays are rounded to 10 ps** (found 2026-10-24, audit, confirmed). The models declare
+- **Delays are rounded to 10 ps** (found 2026-10-24, audit, confirmed; also raised upstream, asap7 issue #42). The models declare
   `` `timescale 1ns/10ps ``, so 22.7 ps becomes 20, 14 becomes 10, 4 becomes 0. ASAP7 gate delays are 5–45 ps, so this
   is coarse, and BCI's glitch factors (1.17–1.28) carry the error. Fix: compile the models with a 1ps precision (for
   example a `` `timescale 1ns/1ps `` override) and remeasure.
@@ -344,7 +369,8 @@ downstream vanishes. The sequential and clock groups are unaffected, so the tota
 non-sky130 run of BCI round 5 (GF180, IHP, NanGate45, ASAP7) showed a combinational group of 0.03–0.6 % of the total,
 against 52 % for the same core on sky130 without the stop. ASAP7 energy per bin was too low by 55–123 % (min16
 0.0318 → 0.0579 nJ), and ASAP7's advantage over sky130 fell from about 60× to about 35× once fixed. The ASAP7 ICGs carry
-`clock_gating_integrated_cell`, so OpenSTA scales the gated subtrees itself; no stop is needed. A VCD-path test showed
+`clock_gating_integrated_cell`, so OpenSTA scales the gated subtrees itself; no stop is needed. The loss is specific
+to the OpenSTA of OpenLane 2.3.10 (sky130 notes 8.2), but the rule stands. A VCD-path test showed
 no difference, which is why the error went unnoticed. BCI now defaults to 0; **KWS still sets `CLK_STOP_ICG=1`** in
 `sim/measure.sh` (section 13). Sky130 notes 8.2 (since its version 1.1) gives the same rule for every PDK.
 

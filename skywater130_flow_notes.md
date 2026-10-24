@@ -1,6 +1,6 @@
 # SkyWater 130 nm flow notes: synthesis, hardening, gate-level simulation and power
 
-**Version 2.0, last updated 2026-10-24.** The full history is in "Version history" below.
+**Version 2.1, last updated 2026-10-24.** The full history is in "Version history" below.
 
 Read this before you synthesise, harden or measure anything on sky130 in any project under `/media/amir`. It is
 written for engineers and AI agents. Everything here was learned the hard way, mostly in the NEAT BMI challenge
@@ -30,6 +30,10 @@ projects; a defect found in one project's flow is handed to that project as an i
 compare it with the line under the title. If the version has changed, read the history rows since your version
 before you start; if only those rows matter to you, there is no need to reread the whole file.
 
+**Upstream.** The tools and PDKs change quickly. `UPSTREAM.md` in this folder lists the installed versions against
+upstream and is reviewed monthly; when upstream fixes a bug that one of these rules works around, the rule is
+updated. Do not upgrade an installed tool or PDK without the owner's approval.
+
 ### Version history
 
 | version | date | project | change |
@@ -37,6 +41,7 @@ before you start; if only those rows matter to you, there is no need to reread t
 | 1.0 | 2026-10-24 | NEAT_Competition | first version: the verified NEAT flow, plus the audits of BCI_paper, KWS, synaptic_delay, Async_inference and sky130-vex2-soc |
 | 1.1 | 2026-10-24 | BCI_paper (round 6), reported by the general agent | 8.2: the advice to stop clock propagation at the clock gates was wrong and is now a warning (combinational power disappears with toggle-count activities); two checklist lines; pointer to the ASAP7 notes in 9.3 |
 | 2.0 | 2026-10-24 | all, audit by the general agent | **0 rewritten: all heavy jobs go through the shared `jobq` queue** (all cores at nice 19, no CPU pinning). Corrected: SRAM22 clock-pin conditions are `we`/`ce`, not `ce&rstb` (9.1); clock duty 0.19–1.06 % and combinational share 25–75 % (8.2); NEAT power 8.18 µW (5.4); hold buffers +53 and +930 (6.1, 9.2); Icarus compile about 10 GB (0); `env.sh` scope (1); physical-cell stubs only where the model file lacks the cell (7). New: low-voltage corners (5.7), physical-sign-off settings are measurement-only (5.1, 12), decap and endcap results, `sky130_fd_sc_ms` has no leakage (9.4), ICG fan-out and SRAM clock slew (3, 9.1), power-grid status of BCI and vex2 (9.1), Icarus capacity and Verilator (7.3, 7.4), pin/net activity order (8.1), register initialisation, FIFO deadlock, OpenSTA 2.6 commands, five checklist lines |
+| 2.1 | 2026-10-24 | web check by the general agent | rules checked against tool sources, documentation and issue trackers; sources added. Corrected: 8.2 mechanism is specific to the OpenSTA of OpenLane 2.3.10 (newer OpenSTA stores densities); SRAM22 0.04 ns slew limit fixed upstream on 2026-09-09 (9.1); Icarus honours SDF `TIMESCALE` in master since 2026-09-13 (7.1); OpenLane defaults stated in 5.1; 9-corner sign-off is OpenLane's default (6.2). New: 8.8 what a power number must state; LibreLane `PNR_CORNERS` and `PL_TIME_DRIVEN` default (5.7); OpenSTA version notes (8.1); CTS skew across clock gates (3); precheck contents (12) |
 
 Contents:
 0. Ground rules on this machine
@@ -165,6 +170,10 @@ NEAT scripts for measurement. Its SRAM22 LEF and liberty fixes (section 9.1) are
 - **Mind the clock-gate fan-out.** An ICG driving about 80 spread-out sinks got no leaf buffers from CTS: 1.4–2 ns slew
   and hold failures. Group about 300 or more sinks per gate (BCI). An ICG driving an SRAM22 clock pin directly gave
   1.5–2 ns slew against a 0.35 ns limit (vex2, section 9.1).
+- **Expect skew across the gate boundary.** OpenROAD CTS builds a separate tree per gated net, which gives large
+  skew between gated and ungated domains; `-balance_levels` equalises buffer counts, not delays (OpenROAD issue
+  #4185). Check hold on paths that cross a gate. LibreLane can also infer ICGs in Yosys (`SYNTH_CLOCKGATE_*`), but
+  direct instantiation keeps the names and the control.
 - **Mind the names that hierarchy creates.** `(* keep_hierarchy *)` modules and generate blocks become escaped names
   with dots and slashes in the routed netlist. That is allowed, but then you must use the renaming of section 5.4.
 - **No unintended latches.** Check that the latch and flip-flop counts after synthesis equal what the RTL declares.
@@ -199,14 +208,14 @@ DRC, no LVS and no antenna repair. A layout for tapeout needs the opposite of se
 
 | setting | value | why |
 |---|---|---|
-| `DECAP_CELL: []` | decap-free fill | Decap cells leak. With standard fill they made up 0.26 µW of a 1.87 µW measurement (NEAT); 53–81 % of the leakage in BCI round 6, and 2.1–3.8 µW of 2.9–4.9 µW in register-file and latch cores (BCI round 10: E_bin 27.3 → 12.1 nJ and 21.9 → 7.8 nJ). Report the logic's leakage, not the fill's. To fix an existing run, rerun from `OpenROAD.FillInsertion` with `DECAP_CELL: []` and reuse the toggles. |
-| `ENDCAP_CELL` | `decap_3` (default) | Endcaps remain decaps even with `DECAP_CELL: []`: 1 222–1 846 cells, about 4–6 nW. Negligible, but "decap-free" is not literal. |
-| `RUN_HEURISTIC_DIODE_INSERTION: false`, `DIODE_ON_PORTS: in` | | Heuristic diodes broke legalisation at high utilisation. |
+| `DECAP_CELL: []` | decap-free fill | Decap cells leak. With standard fill they made up 0.26 µW of a 1.87 µW measurement (NEAT); 53–81 % of the leakage in BCI round 6, and 2.1–3.8 µW of 2.9–4.9 µW in register-file and latch cores (BCI round 10: E_bin 27.3 → 12.1 nJ and 21.9 → 7.8 nJ). Report the logic's leakage, not the fill's (our measurements; no published source compares them). To fix an existing run, rerun from `OpenROAD.FillInsertion` with `DECAP_CELL: []` and reuse the toggles. |
+| `ENDCAP_CELL` | `decap_3` (hd default; `ms` and `hs` use `decap_4`) | Endcaps remain decaps even with `DECAP_CELL: []`: 1 222–1 846 cells, about 4–6 nW. Negligible, but "decap-free" is not literal. |
+| `RUN_HEURISTIC_DIODE_INSERTION: false`, `DIODE_ON_PORTS: in` | | Heuristic insertion is off by default in OpenLane 2; keep it off, it broke legalisation at high utilisation. `DIODE_ON_PORTS` defaults to `none`. |
 | `RUN_ANTENNA_REPAIR: false` | | Antenna violations are reported, not gated. Measurement only. |
-| hold slack margins | 0.5 ns at placement and global routing | Robust gate-level timing; the hold delay cells cost 0.58–0.61 µW (about 8 %) in NEAT's designs. Choose and document it (KWS uses 0.3 ns, synaptic_delay 0.1 ns). |
-| `*_HOLD_MAX_BUFFER_PCT` | 80 | Hold buffers are numerous: 9 172 of 62 119 cells (15 %) in the NEAT baseline. OpenLane reports them as `design__instance__count__hold_buffer`. |
-| `GRT_ALLOW_CONGESTION` | true | A congested design reaches detailed routing, where the watchdog (5.3) judges it. |
-| utilisation / density | density = utilisation + 10 %, at most 95 % | A large ROM core closed at 20 % and not at 30 %. The same netlist at 30 % and 20 % differed by 7 % in power. Small BCI cores routed at 60 %; latch and register-file cores only at 20–30 % (seven 60 % attempts were hopeless after 7 h). |
+| hold slack margins | 0.5 ns at placement and global routing (defaults 0.1 and 0.05 ns) | A deliberate 5–10× overfix for robust gate-level timing; the hold delay cells cost 0.58–0.61 µW (about 8 %) in NEAT's designs. Choose and document it (KWS uses 0.3 ns, synaptic_delay 0.1 ns). |
+| `*_HOLD_MAX_BUFFER_PCT` | 80 (default 50) | Hold buffers are numerous: 9 172 of 62 119 cells (15 %) in the NEAT baseline. OpenLane reports them as `design__instance__count__hold_buffer`. |
+| `GRT_ALLOW_CONGESTION` | true (default false) | A congested design reaches detailed routing, where the watchdog (5.3) judges it. Measurement only; false for tapeout. |
+| utilisation / density | density = utilisation + 10 %, at most 95 % | This equals OpenLane's default (utilisation + 5 × cell padding + 10, with padding 0 on sky130); with the cell padding of 2 used for SRAM22 floorplans (5.5) the default would be +20. A large ROM core closed at 20 % and not at 30 %. The same netlist at 30 % and 20 % differed by 7 % in power. Small BCI cores routed at 60 %; latch and register-file cores only at 20–30 % (seven 60 % attempts were hopeless after 7 h). |
 
 **5.2 Accept a run only when all of these hold:**
 - the detailed router's DRC count is 0;
@@ -231,6 +240,11 @@ netlist as `\u_rom.u_col_0/_307_`, `\g_ws[9].u_icg` or `\u_demux/_000_`.
 - **OpenLane's own sign-off** (`OpenROAD.STAPostPNR`) reads the same SPEF and loses the same parasitics.
 - **Effect in NEAT:** 40 184 SDF errors and 803 757 unmatched SPEF entries; average power rose from 7.00 to 8.18 µW
   (+17 %) once both were fixed. A keep-hierarchy ASAP7 design in ORFS (KWS) lost 4.87 million SPEF entries.
+- **Known upstream, not fixed in our version:** OpenROAD issues #3218 and #3211 (closed as stale; the maintainers
+  blame the SPEF writer's escaping), #6339, PR #8772 (Nov 2025, partial fix) and the open #11839 (Oct 2026, 431 k
+  "net not found" on OpenTitan). `read_spef` inside OpenROAD on the same database does not show it; the stand-alone
+  `sta` does. `set_hierarchy_separator` is not a fix. LibreLane's `SYNTH_HIERARCHY_MODE: keep` has an open bug
+  (librelane #1020).
 - **Fix:** `legal_names.py` renames every escaped identifier to a plain one, the same way in netlist, SDF and SPEF.
   Simulate, time and analyse power on the renamed copies.
 - A flat design whose only escaped names are nets without a slash (`\g_ffs.s_pad[0]`) reads correctly; BCI's and
@@ -250,9 +264,12 @@ it is characterised at −40 °C.
 - **Do not harden or repair at it.** OpenROAD repair at `ss_n40C_1v28` grew to 40–45 GB on 0.3–1 M-cell cores,
   because nearly every net violates that library's slew limits: 5 OOM kills in KWS. With it as `DEFAULT_CORNER`,
   timing-driven global placement died after 26 min ("OpenROAD.GlobalPlacement failed unexpectedly"); the workaround
-  was `PL_TIME_DRIVEN: false` (BCI round 5; the run log misspells it `PL_TIMING_DRIVEN`).
+  was `PL_TIME_DRIVEN: false` (BCI round 5; the run log misspells it `PL_TIMING_DRIVEN`). It defaults to true in
+  OpenLane 2 and to false in LibreLane. The PDK's `MAX_TRANSITION_CONSTRAINT` is 0.75 ns, which most nets violate at
+  1.28 V.
 - **Harden at the standard corners, then evaluate the routed netlist and SPEF at the low-voltage liberty** with your
-  own STA and power. That is a valid operating point. Re-hardening with 1.28 V sign-off cost 7–41 % more energy and up
+  own STA and power. That is a valid operating point. LibreLane's `PNR_CORNERS` does this inside the flow (optimise at
+  the standard corners, report STA at more). Re-hardening with 1.28 V sign-off cost 7–41 % more energy and up
   to 2.5× more leakage in BCI, because of hold repair against `ff_n40C_1v95`.
 - Slacks from a liberty swap ignore the IO delays unless you re-create the constraints from the run's SDC variables.
 - Leakage at −40 °C is not comparable with 25 °C numbers (static energy fell about 32× in synaptic_delay), and some
@@ -274,8 +291,11 @@ it is characterised at −40 °C.
 variables (from `runs/<tag>/resolved.json`), not hand-written constraints. Accept on that timing. In NEAT, OpenLane's
 sign-off reported a hold slack of 0.35 ns where the complete parasitics give 0.52 ns; the error can go either way
 (in NEAT's flat SRAM design both agree). For a flat netlist with zero SPEF misses, OpenLane's sign-off is acceptable.
-- **Which corners.** NEAT signs off at the typical corner; BCI accepts a run only when all 9 OpenLane corners pass.
-  State your policy with the result, and check every corner at which you report numbers.
+- **Which corners.** OpenLane's default `STA_CORNERS` are {nom, min, max} parasitics × {tt_025C_1v80, ss_100C_1v60,
+  ff_n40C_1v95} with `TIMING_VIOLATION_CORNERS: "*"`, so BCI's "all 9 corners pass" is the flow default; NEAT signs
+  off at the typical corner only. State your policy with the result, and check every corner at which you report
+  numbers. (Caravel's own timing sign-off, `make caravel-sta`, uses the same 3 × 3 grid; `cf precheck` checks no
+  timing.)
 
 **6.3 Reading latch paths.** OpenSTA checks flip-flop-to-latch paths against the latch's opening edge, without time
 borrowing. Those paths showed the smallest setup slack of NEAT's designs, although the latch stays transparent for
@@ -291,13 +311,15 @@ Check clock latency and skew after routing, not only slack.
 - **Sanitise the SDF** (`sdf_sanitize_for_icarus.py`). Icarus aborts on what it cannot parse. Keep the cell
   `IOPATH`s and:
   - fix the `a::b` triplets and fill empty `()` triplets with 0;
-  - rescale a non-ns `(TIMESCALE ...)` to ns, because Icarus ignores the header (matters for ASAP7);
+  - rescale a non-ns `(TIMESCALE ...)` to ns, because Icarus up to v13_0 (ours) ignores the header (iverilog #947;
+    honoured in master since PR #1501, 2026-09-13), which matters for ASAP7;
   - drop `INTERCONNECT` (wire delays) and `TIMINGCHECK`;
-  - turn `(COND ...) (IOPATH ...)` into plain `IOPATH`s;
-  - drop `IOPATH`s on bus bits (a macro's `dout[0]`);
+  - turn `(COND ...) (IOPATH ...)` into plain `IOPATH`s (Icarus does not support `COND`, iverilog #949);
+  - drop `IOPATH`s on bus bits (a macro's `dout[0]`; Icarus cannot parse them, iverilog #509);
   - drop cells left empty.
 
-  The cell delays still include the load of the wires. Timing checks are not simulated, so violations show up only in
+  The cell delays still include the load of the wires. Timing checks are not simulated (not implemented in Icarus,
+  iverilog #945), so violations show up only in
   STA. Unwrapping `COND` leaves two `IOPATH`s for the same arc on xor2, xnor2, mux2 and mux4 cells (860 of 19 152 cells
   in a BCI core); only one of the two delays is applied, and the sanitiser does not record which.
 - **Compile** with `-g2012 -gspecify -Ttyp`, in this order:
@@ -339,7 +361,10 @@ Check clock latency and skew after routing, not only slack.
 
 **7.4 Capacity, runtime and the alternatives.**
 - 5 000 real-time bins of a 100 000-cell design took 4–9.5 h per session including power (NEAT).
-- `$sdf_annotate` is O(cells²) in this Icarus: hours at 530 000 cells, and annotation failed outright on 370–600 k
+- **The community treats Icarus SDF simulation as limited.** caravel-cocotb refuses Icarus for SDF-annotated
+  gate-level runs and uses CVC or VCS; Open MPW sign-off used CVC (iverilog #746). Our Icarus flow is a measurement
+  tool, validated by the bit-exact comparison and zero annotation errors, not a timing sign-off.
+- `$sdf_annotate` is O(cells²) in this Icarus (our observation; no published source): hours at 530 000 cells, and annotation failed outright on 370–600 k
   instance netlists. synaptic_delay's `sim/sdf_fast.patch` (`tools/sdf_fast.vpi`) gives the same toggles much faster.
 - **Workaround for very large netlists:** zero-delay simulation of the whole set, multiplied by a glitch factor
   (annotated over zero-delay energy) measured on an annotated subset or a smaller variant. Sampling error was 0.4 % in
@@ -357,13 +382,20 @@ Check clock latency and skew after routing, not only slack.
   per cycle (BCI's rounds 5–7 lacked it; round 10 is clean).
 - Then apply the measured per-pin activities, nets last (7.2). Count the pins that were not found, and look at the
   count: NEAT writes the lists but does not check them.
-- `report_activity_annotation` does not exist in OpenSTA 2.6.0 (vex2's coverage check silently does nothing), and
-  `set_clock_sense` is deprecated in favour of `set_sense -type clock`.
+- **OpenSTA version.** OpenLane 2.3.10 builds OpenSTA commit `b5f3a02` (2024-10-02), which reports "2.6.0"; later
+  commits carry the same label. In ours, `report_activity_annotation` does not exist (added 2025-01-15; vex2's
+  coverage check silently does nothing), `set_clock_sense` is deprecated in favour of `set_sense -type clock`, and
+  `read_power_activities` in favour of `read_vcd`.
+- `set_power_activity -input` applies to every timing root, including tie-cell outputs (OpenSTA issue #539).
+- Without annotation, OpenSTA propagates activity through logic (vectorless); that overestimates (OpenSTA issue
+  #333) and models no glitches. Annotate every pin you can.
 
 **8.2 The root clock network is charged at the full clock rate.** Between the clock port and the first clock gate,
 OpenSTA takes the activity from the clock definition, whatever the annotation says.
 - A design that stops its clock between computations (NEAT: running 0.19–1.06 % of the time) gets most of its
   reported power from there. OpenSTA reported 11.73 µW where the true value is 7.40 µW.
+- OpenSTA has no option to set a lower activity on the root clock network (`activity cannot be set on clock ports`);
+  the correction below is our own method, not a published one.
 - **Correction** (`root_clock_correction.py`): P = P_STA − (1 − d) · P_root, where d is the measured clock duty.
   Buffers and inverters of the root lose internal and switching power; clock gates and other cells clocked directly
   by the root lose internal power only. The walk from the clock port must continue through hold and delay buffers
@@ -374,7 +406,10 @@ OpenSTA takes the activity from the clock definition, whatever the annotation sa
 - **Never stop the clock propagation at the clock gates** (`set_clock_sense -stop_propagation` on clock-gate outputs,
   `CLK_STOP_ICG=1`) when the activities come from toggle counts. The annotated activities are per clock cycle, and
   OpenSTA converts them to rates with the clock that reaches each pin. Behind a stopped clock-gate output no clock
-  reaches the downstream pins, so their internal and switching power become zero. Flip-flops and the clock tree are
+  reaches the downstream pins, and our OpenSTA (`b5f3a02`) then leaves the per-cycle activity unscaled, i.e. reads it
+  as transitions per second: their internal and switching power become about 10⁻⁹ of the true value (confirmed in the
+  source, `Power.cc` `findClkedActivity`). OpenSTA from 2025-01-17 stores densities and no longer has this trap, but
+  the stop is still unnecessary. Flip-flops and the clock tree are
   not affected, which is why the total still looks plausible.
   - Evidence (BCI_paper round 6, found 2026-09-23): the same core and toggle file gave a combinational group of
     0.25 µW without the stop and 8·10⁻¹¹ W with it. Every non-sky130 power run of round 5 lost its combinational
@@ -385,7 +420,8 @@ OpenSTA takes the activity from the clock definition, whatever the annotation sa
     after a flip-flop kept its power. The running totals are probably 25–55 % low.
   - The stop is not needed. `sky130_fd_sc_hd__dlclkp` (like the GF180, IHP, NanGate45 and ASAP7 clock gates) carries
     `clock_gating_integrated_cell` in its liberty, so OpenSTA handles the gated subtrees itself; the NEAT flow uses
-    no stop.
+    no stop. Measured per-pin activities on the gated tree override OpenSTA's own estimate for it (whose formula
+    overcounts in our version; OpenROAD's OpenSTA PR #425, 2026-10).
   - Check: the combinational group must be a plausible share of the dynamic power. NEAT's cores show 24–52 % before
     and 61–76 % after the root-clock correction; a share near 0 %, or many active logic cells at 0 W in the
     per-instance report, means the activities were lost.
@@ -407,12 +443,20 @@ configuration image, leaving out the `*DATE` and `(DATE ...)` header lines, whic
 net. Its total agreed with the per-pin flow "within 5 %" only because errors cancelled (combinational 0.58 against
 1.62 mW, macro 1.52 against 0.22 mW). Compare per-group breakdowns, not totals.
 
+**8.8 State what a power number assumes.** Besides the activity source:
+- the SPEF corner (nom, min or max parasitics) used for power;
+- the output load and driving cell of the ports (the PDK sets `OUTPUT_CAP_LOAD` 33.4 fF), or that they were zeroed;
+- the single liberty corner of leakage (no process spread, no self-heating, no IR drop);
+- the simulator and delay model behind any glitch power: glitch counts depend on how the simulator filters pulses
+  (inertial or transport), and Icarus differs from commercial tools.
+
 ## 9. Special cases
 
 ### 9.1 The SRAM22 macro (`sram22_2048x32m8w8`)
 
 - **Energy counted twice.** The as-generated liberty lists every internal energy once per supply pin and once per
-  ground pin, and OpenSTA sums them (474 against 945 µW in BCI). Use the supply-only copy
+  ground pin, and OpenSTA sums them (474 against 945 µW in BCI; confirmed in the OpenSTA source, which normalises per
+  `related_pg_pin` and then adds them; still so in the upstream liberty, no upstream issue yet). Use the supply-only copy
   `sram22_2048x32m8w8_tt_025C_1v80_pwr.lib` for power, and the as-generated one for timing.
 - **Read energy weighted with the wrong probability.** The clock-pin internal energy is split by
   `when : "we&ce"`, `"we&!ce"`, `"!we&ce"` (read) and `"!we&!ce"` (`ce&rstb` is the *leakage* condition), and OpenSTA
@@ -424,7 +468,8 @@ net. Its total agreed with the per-pin flow "within 5 %" only because errors can
     duties of the activity file with a tolerance.
   - Effect: +0.27 to 0.58 µW of 7–9 µW in NEAT; +4.95 µW of 76.4 µW (+6.5 %) in BCI's dense SRAM core. In the
     VexRiscv SoC the macros' share was 1.7 % instead of about 12 %.
-- **Layout views.** The GDS needs a `prBoundary` (235/4) on its top cell, and the LEF `OBS` must be on met1 only, so
+- **Layout views.** The GDS needs a `prBoundary` (235/4) on its top cell (LibreLane's Magic step needs it; sram22
+  issue #504, declined upstream), and the LEF `OBS` must be on met1 only, so
   that the grid can reach the met2 supply pins. Fixed views are in `/media/amir/NEAT_Competition/flow/macros/` (and
   in vex2's old `skywater/` clone; its current checkout lacks the GDS).
 - **Power grid.** `pdn_cfg_sram22.tcl` must end with `add_pdn_connect -grid macro -layers "met2 met4"`, together with
@@ -435,7 +480,9 @@ net. Its total agreed with the per-pin flow "within 5 %" only because errors can
 - Put the timing liberty in `MACROS` so that paths through the macro are timed.
 - **Simulation:** use the functional model for zero-delay runs and the `_tdout` model, with its output delay, for
   annotated runs.
-- **Slew limits.** The liberty sets a default maximum transition of 0.04 ns, which the data outputs' own slew
+- **Slew limits.** The macro liberties before 2026-09-09 set a default maximum transition of 0.04 ns (sram22 issue
+  #512; fixed upstream in sram22_sky130_macros PR #13, now 0.351 ns). Our copies are the old ones; pin the commit you
+  use. The old value which the data outputs' own slew
   (0.5–0.9 ns) violates. Do not gate acceptance on max-slew at the data outputs. The **clock pin** limit (0.35 ns) is
   different: a slew of 1.2 ns (NEAT) or 1.7–2.0 ns (vex2, driven directly by a `dlclkp_2`) is a real
   violation. Buffer the macro clock.
@@ -483,9 +530,9 @@ one cycle after the last word.
 - **`sky130_fd_sc_ms` has no leakage data.** All 376 cells have `cell_leakage_power : 0` and no `leakage_power`
   groups, so a design in `ms` reports leakage for its macros only, and OpenLane reports `power__leakage__total: 0`
   (vex2). Its decaps have no leakage either, so 5.1's decap advice changes nothing there. Leakage of an `ms` design
-  needs another library or SPICE; say so with the number. `hd`, `hdll` and `hs` have per-cell leakage; `ls` has
+  needs another library or SPICE; say so with the number. (Our observation in the PDK files; no published source.) `hd`, `hdll` and `hs` have per-cell leakage; `ls` has
   state-dependent groups.
-- **`ms` and `hs` have no `diode_2` liberty**, so antenna diodes become black boxes (14 506 in vex2) and their pin
+- **`ms` and `hs` have no `diode_2` liberty** (skywater-pdk issue #358, open), so antenna diodes become black boxes (14 506 in vex2) and their pin
   capacitance is missing from switching power.
 
 ## 10. Checklist for every measurement
@@ -533,8 +580,13 @@ one cycle after the last word.
 
 These notes describe a measurement flow. A tapeout (sparkrv_tapeout plans one on a ChipFoundry shuttle) needs, at
 least, and none of it is set up or verified on this machine yet:
-- LibreLane (the OpenLane successor named in OpenLane 2.3.10's own README) and the shuttle's `cf precheck`; neither is
+- LibreLane (the OpenLane successor named in OpenLane 2.3.10's own README) and the shuttle's `cf` tools
+  (`pip install cf-precheck`; `cf init`, `cf setup`, `cf gpio-config`, which is required before precheck); none is
   installed under `/media/hardware_design_tools`;
+- what `cf precheck` checks: XOR against the golden wrapper, top-cell name, metal density, KLayout FEOL/BEOL/off-grid/
+  zero-area, spike, illegal cell names, OEB (with the CVC electrical checker), power grid and LVS; Magic DRC is
+  optional, and **timing is not checked**;
+- RTL and gate-level full-chip simulation of the wrapper, with the wrapper's pin order matching the template;
 - physical sign-off: Magic and KLayout DRC, netgen LVS, antenna check and repair, density fill, decaps, IR drop;
 - multi-corner sign-off (9 corners), which conflicts with SRAM22's three liberties (9.1) and needs a stated policy;
 - harness integration (Caravel `user_project_wrapper` or OpenFrame): power pins, GPIO and OEB defaults, pad timing,
