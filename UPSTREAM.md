@@ -1,10 +1,10 @@
 # Upstream watch: installed versions against upstream
 
-**Last review: 2026-10-24** (by the general agent, from the web check of both notes). **Next review due: 2026-11-24.**
+**Last review: 2026-10-24** (by the general agent, from the web check of both notes). **Next review: 2026-11-01** (automated, `maintenance/README.md`).
 
 The open-source tools and PDKs change quickly. Several rules in the notes exist only because of bugs that upstream has
-since fixed, and some recommended practices change with new releases. Once a month, the general agent of
-`/media/amir` reviews upstream and updates this file and the notes. The owner decides which upgrades to install.
+since fixed, and some recommended practices change with new releases. On the 1st of every month, an automated run of the
+general agent of `/media/amir` reviews upstream and updates this file and the notes. The owner decides which upgrades to install.
 
 ## Monthly review procedure
 

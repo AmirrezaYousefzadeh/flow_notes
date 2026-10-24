@@ -13,9 +13,13 @@ Every engineer or AI agent reads the relevant file before flow work and updates 
 a new pitfall or a mistake, following the versioning rules at the top of each file. Defects found in a specific
 project are handed to that project as `SKY130_FLOW_ISSUES.md` / `ASAP7_FLOW_ISSUES.md` in its folder, not kept here.
 
-`UPSTREAM.md` tracks the installed tool and PDK versions against upstream. It is reviewed every month, and the notes
+`UPSTREAM.md` tracks the installed tool and PDK versions against upstream. It is reviewed every month by an automated
+run (`maintenance/`), and the notes
 are updated when upstream fixes or changes something they rely on. Upgrades are installed only with the owner's
 approval.
 
-On the workstation the files live in `/media/amir/flow_notes/`; `/media/amir/skywater130_flow_notes.md` and
-`/media/amir/ASAP7_flow_notes.md` are symlinks to them.
+On the workstation the repository is `/media/amir/flow_notes/`; read the notes there.
+
+**Who reads what.** Designer agents and engineers read the two notes files: their section 1 states the installed
+versions they must use. `UPSTREAM.md` and `maintenance/` are for the maintainer (the general agent of `/media/amir`)
+and the owner: the upstream comparison, the monthly review (`maintenance/README.md`) and its reports.
