@@ -17,7 +17,33 @@ Last updated: 2026-10-24.
 
 - 2026-10-24: tools and PDK are being updated (LibreLane 3.0.16, open_pdks `8afc834`, OSS CAD Suite 2026-10-24,
   ORFS `ef2cb37`, new SRAM22 views). The notes' section 1 will name the new defaults once they are validated; until
-  then keep using the current versions. Migration steps for this project will be listed here.
+  then keep using the current versions. Migration steps will be posted here once this project is synced (stage 2);
+  do not change tool versions while fixing the stage-1 items.
+
+## Stage 1: sync (do this first)
+
+This project is not yet in sync with the shared flow. Before any new measurement, fix the critical items below. They
+are described, with evidence and fix, in the issue files in your project folder (listed under "Earlier items"). For
+each one you fix, mark it fixed in that file and leave a note in `/media/amir/flow_notes/inbox/`. Ask the owner first
+where an item changes published or paper numbers. The other items in those files matter too, but can follow.
+
+| priority | where | critical item |
+|---|---|---|
+| 1 | ASAP7_FLOW_ISSUES.md 1 | per-cell leakage halved: the paper's ASAP7/sky130 flip-flop ratios are 2× too low (paper numbers) |
+| 2 | ASAP7_FLOW_ISSUES.md 2 | ORFS optimised at FF while the paper says TT (paper text, maybe numbers) |
+| 3 | ASAP7_FLOW_ISSUES.md 3 | annotated Icarus delays rounded to 10 ps and clock-gate rise delay zero (ASAP7 glitch factors) |
+| 4 | ASAP7_FLOW_ISSUES.md 4 | m12 hold violations at FF and TT not reported |
+| 5 | SKY130_FLOW_ISSUES.md 4 | GF180 annotated rows of the PDK table are wrong (placeholder delays on ~6 % of cells) |
+| 6 | SKY130_FLOW_ISSUES.md 1 | SRAM-core layouts fail the power-grid check (268 602 violations) |
+| 7 | SKY130_FLOW_ISSUES.md 2 | broken macro link: any rerun silently drops the SRAM from power |
+
+## Stage 2: after the sync
+
+Once every critical item is fixed (or dismissed by the owner) and reported through the inbox, the maintainer marks
+this project as synced here. From then on, this file is the only place where the maintainer posts items and tool
+migrations for this project; read it before every measurement.
+
+Status: **not synced** (2026-10-24).
 
 ## Earlier items
 

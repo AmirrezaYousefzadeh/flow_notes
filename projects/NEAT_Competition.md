@@ -17,7 +17,29 @@ Last updated: 2026-10-24.
 
 - 2026-10-24: tools and PDK are being updated (LibreLane 3.0.16, open_pdks `8afc834`, OSS CAD Suite 2026-10-24,
   ORFS `ef2cb37`, new SRAM22 views). The notes' section 1 will name the new defaults once they are validated; until
-  then keep using the current versions. Migration steps for this project will be listed here.
+  then keep using the current versions. Migration steps will be posted here once this project is synced (stage 2);
+  do not change tool versions while fixing the stage-1 items.
+
+## Stage 1: sync (do this first)
+
+This project is not yet in sync with the shared flow. Before any new measurement, fix the critical items below. They
+are described, with evidence and fix, in the issue files in your project folder (listed under "Earlier items"). For
+each one you fix, mark it fixed in that file and leave a note in `/media/amir/flow_notes/inbox/`. Ask the owner first
+where an item changes published or paper numbers. The other items in those files matter too, but can follow.
+
+| priority | where | critical item |
+|---|---|---|
+| 1 | SKY130_FLOW_ISSUES.md 1 | CPU pinning and three simultaneous Icarus compiles conflict with the shared queue |
+| 2 | SKY130_FLOW_ISSUES.md 2 | SDF errors and missing liberties do not fail a run (the challenge's eligibility depends on it) |
+| 3 | SKY130_FLOW_ISSUES.md 3 | stale numbers in `LESSONS.md` (8.16 → 8.18 µW, duty, SRAM22 conditions) |
+
+## Stage 2: after the sync
+
+Once every critical item is fixed (or dismissed by the owner) and reported through the inbox, the maintainer marks
+this project as synced here. From then on, this file is the only place where the maintainer posts items and tool
+migrations for this project; read it before every measurement.
+
+Status: **not synced** (2026-10-24).
 
 ## Earlier items
 

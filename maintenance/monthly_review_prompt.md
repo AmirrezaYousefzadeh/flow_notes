@@ -22,7 +22,9 @@ AmirrezaYousefzadeh/flow_notes): `skywater130_flow_notes.md`, `ASAP7_flow_notes.
    - check which items the project has fixed (look at its files; verify where cheap), and mark them done with the
      date, or remove items that are done and verified;
    - add newly found defects and migration steps (same style: evidence, fix, how to verify);
-   - correct stale paths or facts in them.
+   - correct stale paths or facts in them;
+   - sync status: when every stage-1 (critical) item of a project is fixed and reported through the inbox, or
+     dismissed by the owner, mark the project synced in its file and in `projects/README.md`, and report it.
    Never write new files into a project folder. The `*_FLOW_ISSUES.md` files already in project folders (audit of
    2026-10-24, and the NEAT agent's `FLOW_ISSUE(S)_FROM_NEAT.md`) stay there: read them to see what the projects
    marked fixed, and report in the report which look resolved; do not edit or delete them.

@@ -17,7 +17,29 @@ Last updated: 2026-10-24.
 
 - 2026-10-24: tools and PDK are being updated (LibreLane 3.0.16, open_pdks `8afc834`, OSS CAD Suite 2026-10-24,
   ORFS `ef2cb37`, new SRAM22 views). The notes' section 1 will name the new defaults once they are validated; until
-  then keep using the current versions. Migration steps for this project will be listed here.
+  then keep using the current versions. Migration steps will be posted here once this project is synced (stage 2);
+  do not change tool versions while fixing the stage-1 items.
+
+## Stage 1: sync (do this first)
+
+This project is not yet in sync with the shared flow. Before any new measurement, fix the critical items below. They
+are described, with evidence and fix, in the issue files in your project folder (listed under "Earlier items"). For
+each one you fix, mark it fixed in that file and leave a note in `/media/amir/flow_notes/inbox/`. Ask the owner first
+where an item changes published or paper numbers. The other items in those files matter too, but can follow.
+
+| priority | where | critical item |
+|---|---|---|
+| 1 | SKY130_FLOW_ISSUES.md 1 | hold waivers between gated-clock banks rest on an unchecked protocol argument (published hold-buffer and energy numbers) |
+| 2 | SKY130_FLOW_ISSUES.md 3 | 1.28 V static energy compares −40 °C with 25 °C: state the temperature |
+| 3 | sky130-snn-bmi/ASAP7_FLOW_ISSUES.md | the BCI clone carries BCI's ASAP7 problems |
+
+## Stage 2: after the sync
+
+Once every critical item is fixed (or dismissed by the owner) and reported through the inbox, the maintainer marks
+this project as synced here. From then on, this file is the only place where the maintainer posts items and tool
+migrations for this project; read it before every measurement.
+
+Status: **not synced** (2026-10-24).
 
 ## Earlier items
 
