@@ -1,6 +1,6 @@
 # SkyWater 130 nm flow notes: synthesis, hardening, gate-level simulation and power
 
-**Version 5.0, last updated 2026-10-24.** The full history is in "Version history" below.
+**Version 5.1, last updated 2026-10-24.** The full history is in "Version history" below.
 
 Read this before you synthesise, harden or measure anything on sky130 on this machine. It is written for engineers
 and AI agents. Everything here was learned the hard way, in several research designs measured on this machine:
@@ -10,6 +10,16 @@ is wrong. Section 10 is the checklist every measurement must pass. ASAP7 has its
 this folder.
 
 These notes are for **measuring** power, energy, area and timing. They do not describe a tapeout flow (section 12).
+
+**Measurement or tapeout: which rules apply.** The rules here are of two kinds.
+- **Correctness of the number** (always required): the layout must be legal and meet setup and hold at the sign-off
+  corners with full parasitics, the simulation must match the RTL, and the power analysis must see every cell, net
+  and activity. A layout with hold violations describes a chip that would not work, and the hold buffers a working
+  chip needs are part of its power.
+- **Robustness for silicon** (optional for a measurement-only project): margins and steps beyond what sign-off
+  requires, such as hold or setup overfix margins, antenna repair, density fill, decaps and IR-drop margins. They
+  cost area and power that a measurement should not include unless the design will be taped out. If you skip them,
+  say so with the numbers; if you tape out, apply them (section 12).
 
 **Announcements.** Changes that every user must act on (new default tool or PDK versions, changed rules) are
 broadcast in `/media/amir/flow_notes/ANNOUNCEMENTS.md`. Read it at the start of every measurement campaign. Keeping
@@ -38,6 +48,7 @@ yourself.
 | 3.0 | 2026-10-24 | only the maintainer edits the notes; findings go to `inbox/` |
 | 4.0 | 2026-10-24 | the notes are general: no references to individual projects. Reference tools now live in `flow_notes/tools/` (section 2); fixed SRAM22 views in `/media/pdk` (9.1); broadcast announcements in `ANNOUNCEMENTS.md` |
 | 5.0 | 2026-10-24 | **new default versions** (section 1): LibreLane 3.0.16 with open_pdks `8afc834`, OSS CAD Suite 2026-10-24; OpenLane 2 kept for earlier numbers, never with the new PDK; validation results |
+| 5.1 | 2026-10-24 | header: which rules are correctness (always) and which are silicon robustness (optional when not taping out); 5.1: default hold margins for measurement-only projects instead of a 0.5 ns overfix |
 
 Contents:
 0. Ground rules on this machine
@@ -198,7 +209,7 @@ or KLayout DRC, no LVS and no antenna repair. A layout for tapeout needs the opp
 | `ENDCAP_CELL` | `decap_3` (hd default; `ms` and `hs` use `decap_4`) | Endcaps remain decaps even with `DECAP_CELL: []`: 1 200–1 850 cells, about 4–6 nW. Negligible, but "decap-free" is not literal. |
 | `RUN_HEURISTIC_DIODE_INSERTION: false`, `DIODE_ON_PORTS: in` | | Heuristic insertion is off by default in OpenLane 2; keep it off, it broke legalisation at high utilisation. `DIODE_ON_PORTS` defaults to `none`. |
 | `RUN_ANTENNA_REPAIR: false` | | Antenna violations are reported, not gated. Measurement only. |
-| hold slack margins | 0.5 ns at placement and global routing (defaults 0.1 and 0.05 ns) | A deliberate 5–10× overfix for robust gate-level timing; the hold delay cells cost about 0.6 µW (8 %) in a 7–9 µW design. Choose and document the margin. |
+| hold slack margins | the defaults (0.1 ns at placement, 0.05 ns at global routing) for a measurement-only project | Hold must be met at every sign-off corner with full parasitics (6.2); a margin above that is silicon insurance, not correctness. A 0.5 ns overfix cost about 0.6 µW (8 %) in a 7–9 µW design. With a small margin, the final hold check may fail and need a re-hardening; that is the trade-off. Choose and document the margin. |
 | `*_HOLD_MAX_BUFFER_PCT` | 80 (default 50) | Hold buffers are numerous: 15 % of the cells in one design. OpenLane reports them as `design__instance__count__hold_buffer`. |
 | `GRT_ALLOW_CONGESTION` | true (default false) | A congested design reaches detailed routing, where the watchdog (5.3) judges it. Measurement only; false for tapeout. |
 | utilisation / density | density = utilisation + 10 %, at most 95 % | This equals OpenLane's default (utilisation + 5 × cell padding + 10, with padding 0 on sky130); with the cell padding of 2 used for SRAM22 floorplans (5.5) the default would be +20. A large ROM core closed at 20 % and not at 30 %; the same netlist at 30 % and 20 % differed by 7 % in power. Small logic cores route at 60 %; latch and register-file cores only at 20–30 % (seven 60 % attempts were hopeless after 7 h). |

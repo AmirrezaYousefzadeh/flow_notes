@@ -7,6 +7,17 @@ in `inbox/`.
 
 ---
 
+## 2026-10-24 (late): margins are optional when you only measure
+
+sky130 notes 5.1 (header and section 5.1): rules are now marked as either correctness of the number (always required:
+legal layout, setup and hold met at the sign-off corners with full parasitics, simulation matching the RTL, complete
+power analysis) or robustness for silicon (optional for a measurement-only project: overfix margins, antenna repair,
+density fill, decaps, IR-drop margins). For hold, a measurement-only project may use OpenLane's default margins
+instead of the 0.5 ns overfix, as long as its own sign-off meets hold at every corner. State the choice with your
+numbers.
+
+---
+
 ## 2026-10-24 (evening): new default tools and PDK, validated
 
 The update announced this morning is installed, validated (`validation/README.md`) and now the default.
