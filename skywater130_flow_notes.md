@@ -21,7 +21,8 @@ or a measured effect, leave a note in the inbox and carry on:
 
 The owner asks the maintainer to process the inbox. The maintainer then updates this file (version bump, history
 row) and deletes the processed note. The maintainer never writes into project folders: what a project must fix or
-change (audit findings, tool migrations) is in `/media/amir/flow_notes/projects/<project>.md`. **Read your
+change (audit findings, tool migrations) is in `/media/amir/flow_notes/projects/<project>.md` (items of the
+2026-10-24 audit stay in the project folders' `*_FLOW_ISSUES.md`, which that file points to). **Read your
 project's file before every measurement**, and report fixes or disagreements through the inbox.
 
 **Is my copy current?** Record the version you read in your project's notes. At the start of the next session,
@@ -141,7 +142,7 @@ the same power to the last digit. Start from it.
 
 Known gaps of the NEAT flow itself: it warns about but does not fail on SDF errors, it does not count
 `Unable to match ModPath`, it starts three Icarus compilations at once, and it runs at `nice 10` with CPU pinning.
-These are listed in `flow_notes/projects/NEAT_Competition.md`.
+These are listed in `NEAT_Competition/SKY130_FLOW_ISSUES.md`.
 
 When you copy a tool (`vcd_toggles.c`, `toggles_to_activity.py`, the sanitiser) into another project, record the
 NEAT commit it came from; Async_inference's copies already differ from NEAT's.
@@ -154,7 +155,7 @@ future reference flow for all of the owner's sky130 projects. It is **not** a re
 - its fixed SRAM22 GDS is git-ignored and exists only in the old untracked clone `skywater/` inside the repository,
   so the current checkout cannot load its own configuration (5.6).
 
-Its `FLOW_ISSUES_FROM_NEAT.md` and `flow_notes/projects/sky130-vex2-soc.md` list what it still lacks. Until those are fixed, use the
+Its `FLOW_ISSUES_FROM_NEAT.md` and `SKY130_FLOW_ISSUES.md` list what it still lacks. Until those are fixed, use the
 NEAT scripts for measurement. Its SRAM22 LEF and liberty fixes (section 9.1) are correct.
 
 ## 3. RTL rules for a design you want to measure
@@ -497,7 +498,7 @@ one cycle after the last word.
 - **Do not waive latch paths in the SDC.** A blanket `set_false_path -from` latches plus a hold waiver at the latch
   data pins hides every latch timing problem, including those of a design that writes latches while it computes.
   NEAT now times all of them; both examples met timing, with 53 and 930 more hold buffers. BCI's latch and
-  register-file cores, KWS and synaptic_delay still waive them (their files in `flow_notes/projects/` list where).
+  register-file cores, KWS and synaptic_delay still waive them (their `SKY130_FLOW_ISSUES.md` files list where).
 - **Hold buffers at latch inputs** cost area and power in large latch memories. Measure them.
 - **Gate latch rows with `dlclkp` instantiated directly** (glitch-free enable, plain name, recognised by the root-clock
   correction).

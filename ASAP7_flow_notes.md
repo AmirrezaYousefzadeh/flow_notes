@@ -20,7 +20,8 @@ or a measured effect, leave a note in the inbox and carry on:
 
 The owner asks the maintainer to process the inbox. The maintainer then updates this file (version bump, history
 row) and deletes the processed note. The maintainer never writes into project folders: what a project must fix or
-change (audit findings, tool migrations) is in `/media/amir/flow_notes/projects/<project>.md`. **Read your
+change (audit findings, tool migrations) is in `/media/amir/flow_notes/projects/<project>.md` (items of the
+2026-10-24 audit stay in the project folders' `*_FLOW_ISSUES.md`, which that file points to). **Read your
 project's file before every measurement**, and report fixes or disagreements through the inbox.
 
 If a lesson is not specific to ASAP7, say so in the note; the maintainer puts it in the sky130 notes.
@@ -447,8 +448,8 @@ Everything in sky130 notes section 10, plus:
 
 ## 13. Open issues
 
-Each project has the details and fixes in `/media/amir/flow_notes/projects/<project>.md` (BCI_paper,
-KWS_neuromorphic_tech_node, synaptic_delay).
+Each project has the details and fixes in its own `ASAP7_FLOW_ISSUES.md` (BCI_paper, KWS_neuromorphic_tech_node,
+synaptic_delay/sky130-snn-bmi); new items go to `/media/amir/flow_notes/projects/<project>.md`.
 
 | issue | where | section |
 |---|---|---|

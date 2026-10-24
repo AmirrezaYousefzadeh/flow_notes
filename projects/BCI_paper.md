@@ -19,120 +19,14 @@ Last updated: 2026-10-24.
   ORFS `ef2cb37`, new SRAM22 views). The notes' section 1 will name the new defaults once they are validated; until
   then keep using the current versions. Migration steps for this project will be listed here.
 
-## sky130 (and other kits) items (audit of 2026-10-24)
+## Earlier items
 
-### 1. Power grid of the SRAM cores (notes 9.1, 5.2) — layouts fail acceptance
-- All 8 SRAM-core runs (top, topg) have 268 602 power-grid violations (VPWR 135 414, VGND 133 188) and 1 000
-  `PSM-0038` unconnected-node warnings on met2 (`synthesis/bmi_snn_top/runs/bmi_snn_top_5m/final/metrics.json:98-100`).
-  `pdn_cfg_sram22.tcl:98-99` uses `met3 met4` + `met2 met3` instead of NEAT's `add_pdn_connect -grid macro -layers
-  "met2 met4"`, and `ERROR_ON_PDN_VIOLATIONS: false` hides it. OpenSTA power is not affected; the layouts are. Not
-  listed in `FLOW_ISSUES_FROM_NEAT.md`.
+The items of the audit of 2026-10-24 stay in the project folder:
+- `/media/amir/BCI_paper/SKY130_FLOW_ISSUES.md`
+- `/media/amir/BCI_paper/ASAP7_FLOW_ISSUES.md`
 
-### 2. Broken macro link and silent black box (notes 1, 8.3)
-- `synthesis/bmi_snn_top/macros -> ../../../skywater/...` is broken, and `power/power_toggles_sta.tcl:6` /
-  `run_toggles_power.sh:6,14` read `LIB_SRAM` only if the file exists. Published runs read the macro (u_wmem
-  2.39 µW); any rerun would silently black-box it. The default `LIB_SRAM` is also the double-counting liberty
-  (overridden only in `measure_rt.sh:17`). Fix the link and fail on a missing liberty.
+New items from the maintainer are added below.
 
-### 3. Latch and register-file waivers (notes 9.2, 6.1)
-- `synthesis/bmi_snn_lmem/bmi_snn_lmem.sdc:28-37` (lmin2, lmem2, lmem2g): blanket `set_false_path -from` latches plus
-  a hold waiver at the latch D pins. `bmi_snn_scmem.sdc:29-30` (scmem, scmemg): `set_false_path -from [get_clocks
-  wr_clk]`. Hold buffers are under-counted, so energy may be slightly low; correctness rests on bit-exact GLS only.
-  Decide with the owner whether to re-harden without the waivers.
-- `bmi_snn_top.sdc:32`: extra false path on `mode_dense` (static pin; negligible, but document it).
+## Items
 
-### 4. GF180 annotated numbers are wrong (notes 9.3)
-- Placeholder 1.0 ns delays on about 6 % of the cells (all XOR2/XNOR2, some MUX): 2 144–5 530 `Unable to match
-  ModPath` per run (for example `sim/build_pdk5_gf180_sp_sdf_w5000/vvp.log`). The GF180 annotated rows of the paper's
-  PDK table are affected; the direction of the error is unknown. Fix the models or the sanitiser and rerun.
-
-### 5. Checks not enforced
-- No script counts SDF errors; `run_gls_stream.sh:39` greps only `SDF:`. Count `SDF ERROR` and `Unable to match
-  ModPath` and fail on any.
-- `power/power_toggles_sta.tcl:29-33` still has the `CLK_STOP_ICG` hook (default 0 now). Remove it so it cannot be
-  switched back on.
-- Rounds 5–7 kit numbers lacked `set_power_activity -input -activity 0` (`UNANNOTATED_ZERO` only in `sim/*rt*.sh`);
-  round 10 is clean. Check that no published number still comes from rounds 5–7 kit runs.
-- The sanitiser's COND unwrap leaves two IOPATHs on 860 of 19 152 cells (xor2/xnor2/mux2/mux4) of the sky130 sp SDF;
-  record or choose which delay is applied.
-
-### 6. Stale text
-- `results/run_log_round5.md:228-232` and `synthesis/harden_lowv.sh` comments: the OpenLane key is `PL_TIME_DRIVEN`,
-  not `PL_TIMING_DRIVEN`.
-- `FLOW_ISSUES_FROM_NEAT.md:81-90`: move target and `ln -sfn` paths are outdated (`~/workspace` no longer exists).
-- Memory notes `sky130-ppa-flow.md` and `reference-bmi-flow.md` (in the shared memory of `/media/amir`) still point to
-  `~/workspace/...`, and `sky130-ppa-flow.md:27` / `bci-paper-status.md:26` describe the old median-activity method and
-  "glitches not captured". (Memory part done by the maintainer on 2026-10-24.)
-- `bmi_snn_lmem` accepted at 50 MHz with SS setup −3.97 ns: keep the published caveat.
-
-## ASAP7 items (audit of 2026-10-24)
-
-### 1. Per-cell leakage is halved, and the paper's flip-flop ratios are too low by 2× (paper numbers)
-
-- **What:** every ASAP7 leakage state appears twice in the liberty, once with `related_pg_pin : VDD` (the value) and
-  once with `VSS` (0). `sw/asap7_leakage.py` (lines 15 and 18) averages all groups, which halves the result.
-- **Effect:** DFFHQNx1 at TT is really 229.7 pW (RVT), 2.22 nW (LVT), 22.5 nW (SLVT) and 52.5 pW (SRAM-Vt), so the
-  ratios to sky130 `dfxtp_1` (8.44 pW) are 27×, 263×, 2 670× and 6.2×, not the 14×, 132×, 1 336× and 3× printed in
-  `paper/numbers_asap7.tex` and used in `paper/main.tex` (about lines 191–196).
-- **Not affected:** design-level leakage from OpenSTA (it ignores the VSS entries).
-- **Fix:** average only the groups with `related_pg_pin : VDD`; regenerate `numbers_asap7.tex`; check the paper text
-  that quotes the ratios.
-- **Verify:** recompute one cell by hand from `asap7sc7p5t_SEQ_RVT_TT_nldm_220123.lib`.
-
-### 2. ORFS optimised and signed off at the FF corner, not TT (paper text, maybe numbers)
-
-- **What:** `platforms/asap7/config.mk:311` has `export CORNER ?= BC`, which is FF (0.77 V, 0 °C in the liberty).
-  No script here sets `CORNER`. Every synthesis, repair, CTS and `6_report` ran on FF libraries (see
-  `flow/objects/asap7/bmi_snn_*/base/lib/*_FF_*`), while power was measured at TT.
-- **Wrong statement:** `results/run_log_round6.md:91` says hold repair ran "at the typical corner".
-- **Fix:** decide with the owner. Either rerun with `CORNER=TC` on the `make` line, or keep the FF-optimised netlists
-  and state that, relying on the own TT/SS/FF sign-off of `power/hold_sta.tcl`. In either case write the corner into
-  the results.
-- Note: ORFS's `BC_TEMPERATURE` and `TC_TEMPERATURE` are swapped relative to the liberties (ASAP7 notes 3.3).
-
-### 3. Annotated Icarus runs: delays rounded to 10 ps, clock-gate rise delay zero (glitch factors)
-
-- **10 ps rounding:** the vendor models and `sim/asap7_seq_icarus.v` declare `` `timescale 1ns/10ps ``, so Icarus
-  rounds every annotated delay to 10 ps (22.7 → 20, 14 → 10, 4 → 0). ASAP7 gate delays are 5–45 ps, so the glitch
-  factors (1.17–1.28, `results/PDKS5.md`) carry this error.
-- **ICG rise delay:** `sim/sdf_sanitize_for_icarus.py` fills the empty rise triplets of the conditional ICG paths with
-  0 (lines 178–180), and after the COND unwrap (lines 114–134) those come last and override the unconditional value.
-  `CLK→GCLK` rise is annotated as 0 instead of about 36 ps. Confirmed with a small Icarus run on 24 Oct.
-- **Fix:** compile with 1 ps precision; in the sanitiser, keep the unconditional IOPATH or take the maximum of the
-  conditional ones instead of zero-filling. Then rerun one annotated window and compare its glitch factor and E_bin
-  with the old value. Ask the owner whether to rerun the rest.
-
-### 4. Hold violations on m12 that the logs do not mention
-
-- `results/hold6.json`: m12 fails hold at FF (RVT −0.012 ns, SRAM-Vt −0.014 ns), which the logs record, **and at TT
-  (−0.007 / −0.003 ns), which they do not**.
-- The acceptance check in `synthesis/run_orfs5.sh` accepts hold "NA" because this ORFS writes no
-  `finish__timing__hold__ws`. Gate on `finish__timing__drv__hold_violation_count == 0`, or on `hold_sta.tcl`.
-- Decide with the owner whether m12 is reported with a note or re-hardened.
-
-### 5. Other script fixes (no published numbers change)
-
-- **`NUM_CORES` is never set** in `synthesis/run_orfs5.sh`, so ORFS uses all 24 cores. Pass `NUM_CORES` and submit
-  through the shared queue (`jobq`, guide in `/media/amir/.jobq/README.md`).
-- **Max-slew violations** (40–390 per run in `logs/asap7/*/base/6_report.json`) are ignored by the acceptance check.
-  At least record the count.
-- **Stale paths:** `synthesis/orfs/asap7/config.mk:4`, `sw/recorrect_root10.sh:4` and the generated configs under
-  `/media/pdk/OpenROAD-flow-scripts/flow/designs/asap7/bmi_snn_*` point to `/home/yousefzadeha/workspace/...`, which
-  no longer exists.
-- **Clock-tree report:** `power/power_toggles_sta.tcl` (about lines 49–55) matches only sky130 cell names, so it
-  reports no clock tree on ASAP7, and `power/root_clock_correction.py` puts ASAP7 CTS `BUFx` cells in "Combinational".
-- **`asap7_seq_icarus.v`** lacks ICGx2 and DLLx1; add them if a design uses them.
-- **The shared ORFS patch is not recorded.** This project added the `ASAP7_USESRAM` block (lines 207–255) to
-  `/media/pdk/OpenROAD-flow-scripts/flow/platforms/asap7/config.mk`, plus `yoSys/cells_{latch,clkgate,adders}_SRAM.v`.
-  Save it as a patch file in this repository so it can be reapplied.
-
-### 6. Wrong statements in the logs (text only)
-
-- `results/run_log_round5.md:223` says "all 47,117 INTERCONNECT … matched"; the sanitiser drops them all (lines
-  104–107). The effect is negligible (wires 0.07–0.19 ps), but the text is wrong.
-- `results/run_log_round5.md:244` gives f_max at SS as 2.3 / 1.8 GHz; `results/PDKS5.md` gives 667 / 480 MHz. The
-  first probably comes from the `CLK_STOP_ICG=1` runs. Check, and correct the log.
-- `results/run_log_round5.md:155` blames the lmin2 failure on "no latch mapping configured"; line 196 shows the real
-  cause was the sky130 `dlclkp` cells left in the RTL.
-- The +5.6 % ASAP7 dynamic-energy residual of round 10 (`run_log_round10.md:213-217`) is still unexplained.
-
+(none yet)

@@ -19,14 +19,13 @@ Last updated: 2026-10-24.
   ORFS `ef2cb37`, new SRAM22 views). The notes' section 1 will name the new defaults once they are validated; until
   then keep using the current versions. Migration steps for this project will be listed here.
 
-## sky130 items (audit of 2026-10-24)
+## Earlier items
 
-1. `sky130-async-snn/synthesis/probe/run_gls.sh` sends `iverilog` stderr to `/dev/null`, which hides compile errors
-   (notes 0). Keep stderr in a log and check it.
-2. `power/tools/vcd_toggles.c` and `toggles_to_activity.py` differ from the NEAT copies in
-   `/media/amir/NEAT_Competition/flow/tools/`. Diff them, take NEAT's fixes (net activities after pin activities,
-   notes 7.2), and record the NEAT commit you copied from (notes 2).
-3. `synthesis/probe/RESULTS.md` correctly says its ABC areas are cell area only, untimed, without utilisation. Keep
-   that label wherever those numbers are reused; they are not comparable with OpenLane areas (notes 4).
-4. Submit every heavy job through the shared queue `jobq` (`/media/amir/.jobq/README.md`).
+The items of the audit of 2026-10-24 stay in the project folder:
+- `/media/amir/Async_inference/SKY130_FLOW_ISSUES.md`
 
+New items from the maintainer are added below.
+
+## Items
+
+(none yet)

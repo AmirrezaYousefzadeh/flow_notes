@@ -19,120 +19,15 @@ Last updated: 2026-10-24.
   ORFS `ef2cb37`, new SRAM22 views). The notes' section 1 will name the new defaults once they are validated; until
   then keep using the current versions. Migration steps for this project will be listed here.
 
-## sky130 items (audit of 2026-10-24)
+## Earlier items
 
-### 1. Queue (notes 0)
-- The old `tools/jobq.py` and `kws.slice` are superseded by the shared `jobq` (`/media/amir/.jobq/README.md`).
-  `README.md`, `env.sh` (`q()`), `sw/jobs_stage*.sh` still use the old queue. Move the pending entries.
-- `env.sh`: `PY=/home/yousefzadeha/workspace/SHD/.venv/bin/python` does not exist.
+The items of the audit of 2026-10-24 stay in the project folder:
+- `/media/amir/KWS_neuromorphic_tech_node/SKY130_FLOW_ISSUES.md`
+- `/media/amir/KWS_neuromorphic_tech_node/ASAP7_FLOW_ISSUES.md`
+- `/media/amir/KWS_neuromorphic_tech_node/FLOW_ISSUE_FROM_NEAT.md`
 
-### 2. Clock-propagation stop (notes 8.2)
-- `sim/measure.sh:34` passes `CLK_STOP_ICG=1`; `power/power_sta.tcl` and `power/power_toggles_sta.tcl` implement it.
-  Remove it before any sky130 power run.
+New items from the maintainer are added below.
 
-### 3. Constraints (notes 6.1, 9.2)
-- `synthesis/core.sdc` and `synthesis/sta_corner.tcl` waive all latch paths (`set_false_path -from` latches,
-  `-hold -to` latch data pins; "155648 weight latches: paths from them are false paths" in the logs). Time them.
-- `get_cells -quiet -hierarchical *sel_r*` / `*rowv_r*` matches no cells after flattening (only nets `u_wmem/sel_r[...]`
-  exist), so the hold exception is a silent no-op. Count matched objects and fail at zero.
+## Items
 
-### 4. Sign-off at 1.28 V (notes 6.2, 5.7)
-- `synthesis/sta_corner.tcl` re-creates the constraints by hand (IO delay 20 %, no clock uncertainty, transition,
-  derate, driving cell or load) instead of using the run's `resolved.json` SDC variables, and does not check SPEF
-  misses. Use `NEAT_Competition/flow/tools/signoff_sta.tcl` as the template.
-- Keep hardening at the standard corners and evaluating at `ss_n40C_1v28` afterwards (the practice already chosen);
-  note that leakage there is at −40 °C.
-
-### 5. Escaped names (notes 4, 5.4)
-- Synthesis netlists already carry 875–3 851 escaped names. Apply `legal_names.py` (from
-  `/media/amir/NEAT_Competition/flow/tools/`; the path in `FLOW_ISSUE_FROM_NEAT.md` still says
-  `/home/yousefzadeha/workspace/...`) and gate on zero `spef ... not found` and a black-box count.
-
-### 6. Acceptance and process control (notes 5.2, 5.3, 0)
-- The acceptance gate checks DRC and setup/hold but not power-grid violations.
-- Watchdog thresholds differ (60 000 after 4 iterations, 5 000 after 10, 4 h idle): fine if deliberate, document it.
-- OpenLane is not started as a process-group leader; `pkill -P` reaches only direct children and the backup
-  `pkill -f "runs/<tag>/"` is fragile. Under `jobq`, let the queue's watchdog clean up, or kill the process group.
-- Detailed routing of `kws_tm1_r1h128w4_u20` reached 20 GB by 20 % of iteration 0 and failed: declare `--mem`
-  accordingly.
-
-### 7. Gate-level simulation (notes 7.4)
-- Zero-delay Verilator only: glitch power is missing. Measure a glitch factor on an annotated subset or smaller variant
-  and state it with the numbers.
-
-## ASAP7 items (audit of 2026-10-24)
-
-**No ASAP7 power number of this project is valid yet** (issues 1 and 2). Fix them before measuring anything else.
-
-### 1. `CLK_STOP_ICG=1` removes the combinational power
-
-- **What:** `sim/measure.sh:34` passes `CLK_STOP_ICG=1`, and `power/power_sta.tcl` (lines 15–24) then applies
-  `set_clock_sense -stop_propagation` at every clock-gate output. With per-cycle activities from a toggle file,
-  OpenSTA has no clock behind the gates to convert them with, so the internal and switching power of all downstream
-  pins vanishes. The sequential and clock groups are unaffected, so the totals look plausible.
-- **Evidence:** `work/pwr_asap7_tm1_routed/sta/power.rpt`: combinational dynamic power 22.7 nW of 71.3 µW;
-  `breakdown.txt` shows 0 % combinational in every function. BCI_paper hit the same error (round 6): its ASAP7 energy
-  per bin was too low by 55–123 %.
-- **Fix:** set `CLK_STOP_ICG=0` (or remove the option). The ASAP7 ICGs carry `clock_gating_integrated_cell`, so OpenSTA
-  handles the gated subtrees itself.
-- **Verify:** the combinational group is a substantial share of dynamic power after the change.
-
-### 2. Escaped hierarchical names lose 4.87 M SPEF entries
-
-- See `FLOW_ISSUE_FROM_NEAT.md`. Fix with `/media/amir/NEAT_Competition/flow/tools/legal_names.py` and require zero
-  `spef ... not found` warnings in every OpenSTA log. The 101.9 µW breakdown is invalid until then.
-
-### 3. ORFS optimises and signs off at FF, not TT
-
-- **What:** `/media/pdk/OpenROAD-flow-scripts/flow/platforms/asap7/config.mk:311` has `export CORNER ?= BC` (FF,
-  0.77 V). `synthesis/harden_asap7.sh` does not set `CORNER`, so synthesis, CTS and repair ran on FF libraries
-  (`synthesis/asap7/work/objects/asap7/*/base/lib/*_SRAM_FF_*`) and the IR report says "Supply voltage 0.77 V".
-- **Wrong statements:** `README.md:11` and `harden_asap7.sh:2` say "TT 0.7 V 25 C". Power is taken at TT
-  (`sim/measure.sh:19`).
-- **Fix:** decide with the owner; pass `CORNER=TC` on the `make` line, or sign off yourself at the reported corner.
-
-### 4. Hold violations pass the acceptance check
-
-- **What:** `harden_asap7.sh` (lines 83–93) accepts hold "NA", because this ORFS writes no `finish__timing__hold__ws`.
-  `policy.log` records `hold=NA`.
-- **Evidence:** the accepted `kws_tm1_h128w4_u20` run has `finish__timing__drv__hold_violation_count: 187`, worst
-  −154 ps from `sel_r` to `rowv_r` (`reports/.../6_finish.rpt:269`), at FF. They appear only after RCX extraction.
-- **Fix:** gate on `hold_violation_count == 0`, or on an own OpenSTA hold check with SPEF at each reported corner
-  (`/media/amir/BCI_paper/power/hold_sta.tcl` is a template).
-- **Also:** the SDC still waives latch paths (`harden_asap7.sh:28-30`), against sky130 notes 9.2. Time them.
-- The setup WS of 0.00 in `6_finish.rpt` (about lines 454–470) is latch time borrowing, not a real zero margin.
-
-### 5. Decaps and clock tree inflate area and clock power
-
-- **Decaps:** the local `ASAP7_USESRAM` block of the shared ORFS checkout forces `FILL_CELLS` with decaps. The
-  accepted run placed 796 602 decaps on 69 % of the core ("98 % utilisation" at `CORE_UTILIZATION=20`).
-  `harden_asap7.sh` now passes `FILL_CELLS` on the `make` line (lines 66 and 73), but **no run since has reached the
-  fill stage**: check the next `5_3_fillcell.log` for DECAP cells.
-- **CTS:** without `CTS_BUF_CELL`, CTS used `BUFx24` for every clock buffer (`4_1_cts.log:7-11`): 56 466 buffers, the
-  clock tree 73 % of power and 12.8 µW of 30.6 µW leakage. Try a smaller `CTS_BUF_CELL` and compare.
-
-### 6. Routing failures
-
-- `GRT-0119` congestion on the r2h96 cores at 20, 15 and 10 % utilisation (derated resources 50–63 % per layer,
-  `logs/orfs_kws_tm1_r2h96w4_u20.log:30643-30663`), although `tm1_h128w4` of similar size routed at 20 %. Unresolved.
-- "stack smashing detected" in timing-driven global placement (`tm1_r2h96w4_u10`, `tm8_r2h96w4_u20`, around
-  `logs/orfs_*_u10.log:783-799`). Try `GPL_TIMING_DRIVEN=0`.
-- `tm8_r2h96w4_u15` was killed at 29.6 GB in detailed routing, possibly by the old `kws.slice` limit shared with a
-  sky130 job. The 1.3 M-instance route peaked at 32.5 GB: declare at least 35 GB.
-
-### 7. Script and housekeeping fixes
-
-- **Queue:** the old `tools/jobq.py` and `kws.slice` are superseded by the shared queue `jobq` (`/media/amir/.jobq`,
-  guide in its `README.md`). The pending `hard_asap7_tmh_r2h96w4` entry of the old queue needs moving.
-- **Watchdog:** `pkill -f "DESIGN_NICKNAME=$3"` (`harden_asap7.sh:46`) matches nothing, because the nickname is in the
-  config file, not on the command line. Kill the `openroad` process IDs or the `setsid` process group.
-- **Swap test:** `synthesis/swap_test.sh` never ran: rerunning `do-5_2_route` from a copied `5_1_grt.odb` needs
-  `reports/.../congestion.rpt` as well. Line 32 also reuses a stale config. The owner's rule (swap allowed if less
-  than 5× slower) is therefore still unmeasured.
-- **Stale paths:** generated `config.mk` files and ORFS objects point to `/home/yousefzadeha/workspace/...`, which no
-  longer exists. Regenerate from this folder.
-- **Verilator mismatch:** the ASAP7 synthesis netlist fails with 16 errors in Verilator (`work/gls_asap7_synth/sim.log`)
-  while Icarus passes on it and Verilator passes on the routed netlist. Unexplained.
-- **Icarus models:** if you use `/media/amir/BCI_paper/sim/asap7_seq_icarus.v`, add ICGx2 and DLLx1, compile with
-  1 ps precision, and read ASAP7 notes 8.1 about the sanitiser's ICG rise-delay bug.
-
+(none yet)

@@ -23,8 +23,9 @@ AmirrezaYousefzadeh/flow_notes): `skywater130_flow_notes.md`, `ASAP7_flow_notes.
      date, or remove items that are done and verified;
    - add newly found defects and migration steps (same style: evidence, fix, how to verify);
    - correct stale paths or facts in them.
-   Never write into a project folder. `FLOW_ISSUE(S)_FROM_NEAT.md` files in project folders were written by the NEAT
-   agent; leave them, but mention in the report if they look resolved.
+   Never write new files into a project folder. The `*_FLOW_ISSUES.md` files already in project folders (audit of
+   2026-10-24, and the NEAT agent's `FLOW_ISSUE(S)_FROM_NEAT.md`) stay there: read them to see what the projects
+   marked fixed, and report in the report which look resolved; do not edit or delete them.
 4. **Inbox.** List every note in `inbox/` (other than its README) in the report with a one-line summary. Do not act
    on them: the owner asks for inbox processing separately.
 5. **Housekeeping.**
@@ -52,7 +53,7 @@ AmirrezaYousefzadeh/flow_notes): `skywater130_flow_notes.md`, `ASAP7_flow_notes.
 ## Never, in this unattended run
 
 - install, upgrade, remove or switch any tool, PDK, Nix profile, Python package or ORFS checkout;
-- write, change or delete anything inside a project folder (only `flow_notes/` and the shared memory);
+- write, change or delete anything inside a project folder (only `flow_notes/` and the shared memory are yours);
 - edit any file named `Amir_toughts.md` or `amir_toughts.md`;
 - run heavy jobs (simulations, hardening, power runs). If a check needs one, propose it in the report;
 - start more than three subagents at once.

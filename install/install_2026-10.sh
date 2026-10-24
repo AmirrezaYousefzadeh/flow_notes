@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Tool and PDK update of 2026-10 (approved by the owner on 2026-10-24: install, validate, then make the new versions
 # the defaults; the old versions stay installed for reproducing published numbers).
+# Note: the librelane step needs the FOSSi Nix cache (root: /etc/nix/nix.custom.conf), otherwise Nix compiles
+# every tool from source in the daemon, outside jobq, with all cores.
 # Usage: install_2026-10.sh <step>   steps: librelane | pdk | osscad | sram22 | orfs
 # Each step is submitted separately through jobq.
 set -euo pipefail
@@ -22,9 +24,11 @@ case "${1:?step}" in
       'python3 -m librelane --version; openroad -version; sta -version; yosys -V; klayout -v; magic --version </dev/null || true'
     ;;
   pdk)
-    # Fetch (do not enable) the sky130 PDK version LibreLane 3.0.16 is validated with.
-    "${NIX[@]}" develop --accept-flake-config "$LL" -c bash -c \
-      "ciel fetch --pdk-root $P --pdk-family sky130 $SKY130_REV && ciel ls --pdk-root $P --pdk-family sky130"
+    # Fetch (do not enable) the sky130 PDK version LibreLane 3.0.16 is validated with; ciel from a small venv.
+    V=$T/ciel-venv
+    [[ -x $V/bin/ciel ]] || { python3 -m venv "$V"; "$V/bin/pip" install -q 'ciel>=2.3.1,<3'; }
+    "$V/bin/ciel" fetch --pdk-root "$P" --pdk-family sky130 "$SKY130_REV"
+    "$V/bin/ciel" ls --pdk-root "$P" --pdk-family sky130
     ;;
   osscad)
     # OSS CAD Suite nightly next to the old one (Icarus master, Yosys, Verilator).

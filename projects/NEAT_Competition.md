@@ -19,35 +19,13 @@ Last updated: 2026-10-24.
   ORFS `ef2cb37`, new SRAM22 views). The notes' section 1 will name the new defaults once they are validated; until
   then keep using the current versions. Migration steps for this project will be listed here.
 
-## sky130 items (audit of 2026-10-24)
+## Earlier items
 
-### 1. Queue and priority (notes section 0)
-- The shared queue `jobq` (`/media/amir/.jobq/README.md`) is now mandatory for heavy jobs. `env/env.sh:23-24` pins
-  every job to CPUs 0–9 (`NEAT_THREADS=10`, `taskset`), so concurrent queue jobs pile onto the same cores. Drop the
-  pinning under the queue and pass `JOBQ_THREADS` on.
-- The scripts use `nice -n 10` and no `ionice` (`gls.sh:28`, `harden.sh:55,159`, `power.sh:40,182`,
-  `evaluate/regenerate.sh:51`); the queue applies nice 19 and idle I/O itself.
-- `evaluate/evaluate.sh:113-118` starts three `measure.sh` at once, i.e. three Icarus compilations of about 10 GB, with
-  no memory check. Submit them as separate queue jobs with `--mem 12`.
+The items of the audit of 2026-10-24 stay in the project folder:
+- `/media/amir/NEAT_Competition/SKY130_FLOW_ISSUES.md`
 
-### 2. Checks the notes require that the flow does not enforce
-- `gls.sh:83-84` only prints a warning on `SDF ERROR`; `Unable to match ModPath` is never counted; `evaluate/report.py`
-  does not gate eligibility on them. Make both fail the run.
-- `gls.sh:48` loads the configuration image only if it exists and is non-empty (`[[ -s ]]`), the "if it exists"
-  pattern of notes 8.3. Fail instead.
-- The unfound-pin lists (`annot_notfound_*.txt`) are written but never checked; nothing checks the combinational share,
-  the latch/flip-flop counts after synthesis, or the object count of each SDC exception (notes section 10).
-- `measure.json` records only the Icarus version, not OpenSTA or OpenLane (notes 11).
+New items from the maintainer are added below.
 
-### 3. Stale or wrong statements in `flow/LESSONS.md` (and the memory note)
-- 8.16 / 8.01 µW → the official values after re-hardening are 8.18 / 8.05 µW (`MEASUREMENTS.md:11`, v3).
-- Clock duty "0.2–0.7 %" (LESSONS:81) → 0.19–1.06 % (v3 `measure.json`).
-- SRAM22 read energy "`when: ce&rstb`" (LESSONS:115) → `ce&rstb` is the leakage condition; the clock-pin conditions are
-  `we&ce`, `we&!ce`, `!we&ce`, `!we&!ce` (the `macro_state_correction.py` docstring is right).
-- "53 hold buffers" → +53 (SRAM baseline) and +930 (alternative baseline).
-- "40–50 % combinational" → 24–52 % before and 61–76 % after the root-clock correction.
-- Icarus compilation "10 GB" here vs "12 GB" in the old notes: the notes now say about 10 GB; correct it if you have a
-  measured peak.
-- The shipped `flow/macros/test/rtl/neat_clkgate.v` wraps `dlclkp` in a module, which notes 3 discourages; the
-  examples themselves use the direct macro. Consider removing or documenting it.
+## Items
 
+(none yet)
