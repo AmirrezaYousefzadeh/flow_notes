@@ -1,6 +1,6 @@
 # ASAP7 flow notes: synthesis, place and route with ORFS, gate-level simulation and power
 
-**Version 3.0, last updated 2026-10-24.** The full history is in "Version history" below.
+**Version 4.0, last updated 2026-10-24.** The full history is in "Version history" below.
 
 Read this before you synthesise, place and route or measure anything on ASAP7 (the predictive 7 nm library) on this
 machine. It is written for engineers and AI agents. It collects what was learned measuring several neural-network
@@ -37,6 +37,7 @@ and never modify a shared ORFS checkout.
 | 1.3 | 2026-10-24 | rules checked against upstream ORFS, issue trackers and papers; sources added. Corrected: adder-map error is a Yosys `extract_fa` bug; `REMOVE_ABC_BUFFERS`; `CTS_BUF_CELL` does nothing; hold repair stages; cause of the X in vendor SEQ models. New: mis-characterised RVT FF liberty, SRAM-Vt decap class, fakeram values, `QT_QPA_PLATFORM`, congestion levers |
 | 2.0 | 2026-10-24 | only the maintainer edits the notes; findings go to `inbox/` |
 | 3.0 | 2026-10-24 | the notes are general: no references to individual projects. Reference tools in `flow_notes/tools/`; open questions instead of per-project open issues (13); broadcast announcements in `ANNOUNCEMENTS.md` |
+| 4.0 | 2026-10-24 | **new default versions** (section 1): ORFS `ef2cb37` with the LibreLane binaries, SRAM-Vt via `ASAP7_USE_VT=SRAM`, corrected RVT FF liberty, hold slack reported; the SRAM-Vt patch notes of 1, 6.3 updated |
 
 Contents:
 0. Ground rules on this machine
@@ -73,45 +74,45 @@ All of section 0 of the sky130 notes applies, in particular: every heavy job thr
 
 ## 1. Tools and paths
 
-These are the installed default versions. `ANNOUNCEMENTS.md` says when they change.
+These are the installed default versions (since 2026-10-24, validated with ORFS's `gcd` example in RVT and SRAM-Vt
+at TT, `validation/`). `ANNOUNCEMENTS.md` says when they change.
 
 | what | where / version | how to call |
 |---|---|---|
-| ORFS | `/media/pdk/OpenROAD-flow-scripts`, commit `b4dbcb4` (2024-10-02), chosen to match the OpenROAD of OpenLane 2.3.10; carries a local SRAM-Vt patch (below) | `make` in `flow/`, see below |
-| OpenROAD, Yosys, KLayout, OpenSTA | not built inside ORFS; taken from the OpenLane 2 Nix shell: OpenROAD `edf00dff`, **Yosys 0.46** (`e97731b`), OpenSTA 2.6 | `nix --extra-experimental-features "nix-command flakes" develop --accept-flake-config /media/hardware_design_tools/openlane2 -c ...` |
-| ASAP7 platform | `/media/pdk/OpenROAD-flow-scripts/flow/platforms/asap7`; `/media/pdk/asap7` is a symlink to it | `PLATFORM=asap7` |
-| liberty (NLDM) | `platforms/asap7/lib/NLDM/`: `asap7sc7p5t_{AO,INVBUF,OA,SIMPLE}_<flavour>_<corner>_nldm_*.lib.gz` and `..._SEQ_..._nldm_220123.lib` (SEQ not gzipped) | OpenSTA reads `.gz` directly |
+| ORFS | `/media/pdk/OpenROAD-flow-scripts-ef2cb37`: upstream `ef2cb37` (2026-02-12) plus the re-characterised RVT FF liberty (`3a376ac`) and SRAM-Vt support (`flow_notes/install/patches/apply_sram_vt_orfs.sh`) | `make` in `flow/`, see below |
+| OpenROAD, Yosys, KLayout, OpenSTA | not built inside ORFS; taken from the LibreLane Nix shell: OpenROAD `dcf3613` (73 commits newer than ORFS's own pointer), OpenSTA 2.7.0, Yosys 0.62, KLayout 0.30.7 | `nix --extra-experimental-features "nix-command flakes" develop --accept-flake-config /media/hardware_design_tools/librelane -c ...` |
+| ASAP7 platform | `<ORFS>/flow/platforms/asap7` | `PLATFORM=asap7`, `ASAP7_USE_VT=RVT\|LVT\|SLVT\|SRAM` |
+| liberty (NLDM) | `platforms/asap7/lib/NLDM/`: `asap7sc7p5t_{AO,INVBUF,OA,SIMPLE}_<flavour>_<corner>_nldm_*.lib.gz` and `..._SEQ_..._nldm_220123.lib` (SEQ not gzipped); the `*_SRAMVT_*` names are aliases of the `*_SRAM_*` files | OpenSTA reads `.gz` directly |
 | upstream library | `/media/pdk/asap7sc7p5t_28` (sparse clone, `472f7b3`): `LIB/NLDM/*.7z`, `Verilog/` (all flavours) | |
 | Verilog cell models | ORFS ships RVT TT only (`platforms/asap7/verilog/stdcell`); SRAM-Vt from `/media/pdk/asap7sc7p5t_28/Verilog` | see section 8 before simulating |
 | Icarus model copies | `/media/pdk/icarus_sdf_models/asap7sc7p5t_*_{RVT,SRAM}_TT_*_sdf.v` (notifier initialised) | **not validated** |
 | Icarus Verilog | OSS CAD Suite, see sky130 notes section 1 | |
 
+**Previous version, kept for reproducing earlier numbers:** ORFS `/media/pdk/OpenROAD-flow-scripts` (`b4dbcb4`,
+2024-10-02, with the old `ASAP7_USESRAM` patch) run with the OpenLane 2 Nix shell (OpenROAD `edf00dff`, Yosys 0.46,
+OpenSTA `b5f3a02`); `/media/pdk/asap7` and `/media/pdk/nangate45` still point into it. Never combine the new ORFS with
+the OpenLane 2 binaries or the old ORFS with the LibreLane binaries.
+
 **Invocation:**
 
 ```
 export QT_QPA_PLATFORM=offscreen
-nix ... develop --accept-flake-config /media/hardware_design_tools/openlane2 -c bash -c \
-  "cd /media/pdk/OpenROAD-flow-scripts/flow && make WORK_HOME=<own dir> DESIGN_CONFIG=<path>/config.mk \
-   NUM_CORES=\$JOBQ_THREADS CORNER=TC FILL_CELLS='FILLERxp5_ASAP7_75t_SRAM FILLER_ASAP7_75t_SRAM' \
-   OPENROAD_EXE=\$(which openroad) YOSYS_EXE=\$(which yosys) KLAYOUT_CMD=\$(which klayout)"
+nix ... develop --accept-flake-config /media/hardware_design_tools/librelane -c bash -c \
+  "cd /media/pdk/OpenROAD-flow-scripts-ef2cb37/flow && make WORK_HOME=<own dir> DESIGN_CONFIG=<path>/config.mk \
+   ASAP7_USE_VT=SRAM CORNER=TC NUM_CORES=\$JOBQ_THREADS \
+   FILL_CELLS='FILLERxp5_ASAP7_75t_SRAM FILLER_ASAP7_75t_SRAM' \
+   OPENROAD_EXE=\$(which openroad) OPENSTA_EXE=\$(which sta) YOSYS_EXE=\$(which yosys) KLAYOUT_CMD=\$(which klayout)"
 ```
 
-(`FILL_CELLS` as shown for SRAM-Vt; for RVT use the `_R` fillers.)
+(`FILL_CELLS` as shown for SRAM-Vt, to keep decaps out; for RVT use the `_R` fillers.)
 
 - **`QT_QPA_PLATFORM=offscreen` is required.** The ORFS Makefile sets it only when `DISPLAY` is empty; under ssh or
   VS Code `DISPLAY` is set but unusable (ORFS issue #3034). Without it `6_report` aborts on a Qt plugin error
   (signal 6, rc=2) even when the route is clean, and an acceptance script rejects a good run.
-- **The SRAM-Vt patch of the default checkout.** `flow/platforms/asap7/config.mk` carries an added `ASAP7_USESRAM`
-  block, plus `yoSys/cells_{latch,clkgate,adders}_SRAM.v` (copies of the `_R` files); a copy is in
-  `flow_notes/install/patches/`. ORFS ships the SRAM-Vt liberties, LEF and GDS, but no switch selects them. With
-  `ASAP7_USESRAM=1`, check after synthesis that `objects/.../lib/` holds `*_SRAM_*` files.
-  - The block assigns with `=`, because with `?=` the RVT defaults won and the flow failed with
-    `TAP-0010 Master TAPCELL_ASAP7_75t_R not found`. Side effect: it also forces `FILL_CELLS` with decaps, which
-    overrides a design config; pass `FILL_CELLS` on the `make` line (section 6.3).
-  - Newer ORFS has `ASAP7_USE_VT` (RVT, LVT, SLVT); `flow_notes/install/patches/apply_sram_vt_orfs.sh` adds SRAM-Vt to
-    such a checkout without editing its config (`ASAP7_USE_VT=SRAM`).
+- **SRAM-Vt** is selected with `ASAP7_USE_VT=SRAM`. Check after synthesis that `objects/.../lib/` (or the synthesis
+  log) names `*_SRAMVT_*` liberties at the corner you asked for.
 - **Stale paths.** ORFS configs generated before October 2026 may point to `/home/yousefzadeha/workspace/...`, which
-  no longer exists. Regenerate configs before rerunning anything.
+  no longer exists, and to the old checkout. Regenerate configs before rerunning anything.
 
 ## 2. Reference tools
 
@@ -134,7 +135,7 @@ hold check (7.2), and a routing watchdog that kills the process group (6.6).
 ## 3. Library flavours, corners and units
 
 **3.1 Flavours.** Cell names end in `_ASAP7_75t_<f>`: `R` (RVT), `L` (LVT), `SL` (SLVT), `SRAM` (SRAM-Vt, the
-lowest-leakage flavour, available here only through the patch of section 1). Footprints are identical.
+lowest-leakage flavour, selected with `ASAP7_USE_VT=SRAM`, section 1). Footprints are identical.
 - **"SRAM" here is a standard-cell threshold flavour, not an SRAM macro.**
 - Swapping liberties on a netlist routed with another flavour is not the same as hardening natively; label which one
   you did.
@@ -224,7 +225,7 @@ Settings that every ASAP7 config needs:
 
 | setting | why |
 |---|---|
-| `ADDER_MAP_FILE :=` (empty) | **Adder mapping produces wrong netlists**: outputs off by ±2 against the RTL, already in `1_synth.v`, same on NanGate45. A SAT miter found a counterexample (an accumulator wrong 11 cycles after reset). With the map disabled, the netlists are bit-exact. The likely cause is Yosys `extract_fa`, which ORFS runs before this techmap: it miscompiled xor3/xnor3 polarity before Yosys 0.50 (YosysHQ PR #4691, 2025-02; issue #3660). The default Yosys here is 0.46, so keep the map off. ORFS's `EQUIVALENCE_CHECK=1` runs an equivalence check around repair. |
+| `ADDER_MAP_FILE :=` (empty) | **Adder mapping produces wrong netlists**: outputs off by ±2 against the RTL, already in `1_synth.v`, same on NanGate45. A SAT miter found a counterexample (an accumulator wrong 11 cycles after reset). With the map disabled, the netlists are bit-exact. The likely cause is Yosys `extract_fa`, which ORFS runs before this techmap: it miscompiled xor3/xnor3 polarity before Yosys 0.50 (YosysHQ PR #4691, 2025-02; issue #3660). The old stack's Yosys is 0.46; the default (0.62) has the fix, but keep the map off until an equivalence check (or the bit-exact simulation) confirms it on your design. ORFS's `EQUIVALENCE_CHECK=1` runs an equivalence check around repair. |
 | `SYNTH_MEMORY_MAX_BITS` | The default 4096 aborts with "Synthesized memory size exceeds maximum allowed bits" on case-statement ROMs. Values of 65536 and 1e6 were used. |
 | `ABC_AREA=1` | Fewer cells and fanout violations. |
 | `REMOVE_ABC_BUFFERS=1` | Runs `remove_buffers` *instead of* the floorplan-stage `repair_timing` (setup and hold with ideal clocks), whose hold repair hit `RSZ-0060 Max buffer count reached` through nested clock gates at a 200 ns clock. Removed upstream (ORFS PR #4580, 2026-10-21); there, `SKIP_FLOORPLAN_REPAIR_TIMING` and `SETUP_SLACK_MARGIN` are the levers. |
@@ -251,14 +252,13 @@ Settings that every ASAP7 config needs:
 `"asap7   "` and fails with "Is a directory". Put comments on their own line.
 
 **6.3 Decaps in the SRAM-Vt flavour.**
-- The SRAM-Vt patch of the default checkout forces `FILL_CELLS` to include `DECAPx1…x10`, after and over the design
-  config. In one run, 796 602 decaps covered 69 % of the core, and the report showed "98 % utilisation" at
-  `CORE_UTILIZATION=20`. Fix: pass `FILL_CELLS='FILLERxp5_ASAP7_75t_SRAM FILLER_ASAP7_75t_SRAM'` on the `make` command
-  line (not yet verified in a run that reached the fill stage).
+- The old checkout's SRAM-Vt patch forced `FILL_CELLS` to include `DECAPx1…x10`, after and over the design config;
+  the default ORFS includes DECAPs in its default `FILL_CELLS` for every flavour. In one run, 796 602 decaps covered 69 % of the core, and the report showed "98 % utilisation" at
+  `CORE_UTILIZATION=20`. Fix: pass `FILL_CELLS` without decaps on the `make` command line.
 - DECAPs are in the default `FILL_CELLS` for RVT too. The RVT, LVT and SLVT LEFs declare them `CLASS CORE SPACER`, but
   the SRAM-Vt LEF declares `DECAPx*_SRAM` as `CLASS CORE`, so ORFS counts decaps as standard cells: utilisation 0.94
-  against 0.66 and area 3 441 against 2 469 µm² in one core. Report logic-only area. (`apply_sram_vt_orfs.sh` fixes
-  the LEF class in newer checkouts.)
+  against 0.66 and area 3 441 against 2 469 µm² in one core. The default ORFS has this fixed (`SPACER`); the old
+  checkout does not. Report logic-only area.
 - Decaps, fillers and taps have no ASAP7 liberty, so they cost area, routing and simulation time, not power (9.3).
 
 **6.4 Clock-tree synthesis.** CTS used `BUFx24` for every clock buffer: 56 466 buffers and 59 764 clock nets in a
@@ -298,8 +298,8 @@ ORFS also leaves tens to hundreds of max-slew violations per run; record the cou
 6.2), because ORFS signs off at FF by default (3.3). A reported setup slack of 0.00 on latch paths is time borrowing,
 not a zero margin.
 
-**7.2 Hold: this ORFS reports no hold slack** (on any platform; the metric was added upstream in March 2025).
-`6_report.json` has no `finish__timing__hold__ws`, so scripts read "NA" and accept. Hold is repaired at CTS and after
+**7.2 Hold.** The old ORFS reports no hold slack (the metric was added upstream in March 2025): its
+`6_report.json` has no `finish__timing__hold__ws`, so scripts read "NA" and accept. The default ORFS reports it. Hold is repaired at CTS and after
 global routing, and never after detailed routing (still so upstream).
 - A run accepted this way had `finish__timing__drv__hold_violation_count: 187`, worst −154 ps at FF. Global routing
   showed none; they appear only after RCX extraction.
@@ -409,7 +409,7 @@ Everything in sky130 notes section 10, plus:
 | `NUM_CORES` passed to `make` | `$JOBQ_THREADS` |
 | `objects/.../lib/` after synthesis | the intended flavour (`*_SRAM_*` for SRAM-Vt) and corner |
 | `CORNER` used by ORFS, and the corner of sign-off and power | stated in the result file |
-| `ADDER_MAP_FILE` | empty (with Yosys < 0.50) |
+| `ADDER_MAP_FILE` | empty, unless an equivalence check proves the mapped netlist (Yosys 0.62 has the `extract_fa` fix) |
 | every period, slack and delay | converted between ps and ns in one known place |
 | synthesis and routed netlist against RTL | bit-exact |
 | `DECAP` cells in the fill log | only if intended |
@@ -439,7 +439,6 @@ General questions that no measurement here has answered yet. Report answers thro
 |---|---|
 | Do the vendor ASAP7 SEQ models work in current Icarus once the notifier is initialised and the SDF rescaled? | 8.1 |
 | How much do glitch factors change with 1 ps model precision and correct ICG rise delays? | 8.1, 8.3 |
-| Does `FILL_CELLS` on the `make` line keep decaps out with the SRAM-Vt patch? | 6.3 |
 | Does a smaller CTS buffer list reduce the clock-tree power of latch-row cores? | 6.4 |
 | Which `ROUTING_LAYER_ADJUSTMENT` lets large latch cores route at 15–20 %? | 6.5 |
 | Does `GPL_TIMING_DRIVEN=0` avoid the "stack smashing" crash? | 6.5 |

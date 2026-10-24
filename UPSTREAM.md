@@ -1,6 +1,6 @@
 # Upstream watch: installed versions against upstream
 
-**Last review: 2026-10-24** (by the general agent, from the web check of both notes). **Next review: 2026-11-01** (automated, `maintenance/README.md`).
+**Last review: 2026-10-24** (web check of both notes; tool and PDK update installed and validated the same day). **Next review: 2026-11-01** (automated, `maintenance/README.md`).
 
 The open-source tools and PDKs change quickly. Several rules in the notes exist only because of bugs that upstream has
 since fixed, and some recommended practices change with new releases. On the 1st of every month, an automated run of the
@@ -25,25 +25,21 @@ general agent of `/media/amir` reviews upstream and updates this file and the no
 
 ## Installed versions (pins) and upstream
 
-| component | installed (pin) | upstream now (2026-10-24) | effect on our rules |
-|---|---|---|---|
-| OpenLane 2 | 2.3.10, `a7b0e6d`, Nix flake in `/media/hardware_design_tools/openlane2` | OpenLane 2 is superseded by **LibreLane**, which its own README points to | LibreLane: `PL_TIME_DRIVEN` defaults to false, `PNR_CORNERS` exists (sky130 5.7). Needed for tapeout (sky130 12). |
-| OpenSTA (inside OpenLane) | `b5f3a02` (2024-10-02), reports "2.6.0" | densities instead of per-cycle activities (2025-01-17); `report_activity_annotation` (2025-01-15); gated-clock activity fix (OpenROAD fork PR #425, 2026-10-19) | the clock-stop power loss is specific to our version (sky130 8.2); with newer versions, annotate with `-density`, because `-activity` is converted with the fastest clock |
-| OpenROAD (inside OpenLane) | `edf00dff` | SPEF escaped-slash partial fix (PR #8772, 2025-11); escaped-name SPEF misses still open (#11839) | keep renaming with `legal_names.py` (sky130 5.4) |
-| OpenROAD-flow-scripts | `b4dbcb4` (2024-10-02) **plus a local SRAM-Vt patch** | `ASAP7_USE_VT` replaces `ASAP7_USELVT`/`USESLVT`; hold metrics (2025-03); `REMOVE_ABC_BUFFERS` removed (2026-10-21); RVT `SIMPLE` FF liberty re-characterised (2026-02-23); `ROUTING_LAYER_ADJUSTMENT` 0.25; `CTS_BUF_LIST` | an update loses the local patch (ASAP7 1); several ASAP7 rules change (5, 6.4, 6.5, 7.2) |
-| Yosys | 0.44+1 (OSS CAD Suite), 0.46 `e97731b` (Nix, used by OpenLane and ORFS) | `extract_fa` fix in 0.50 (PR #4691, 2025-02) | from 0.50 the adder map may be safe; verify with an equivalence check before enabling (ASAP7 5) |
-| Icarus Verilog | 13.0 devel s20221226-533 (`676b36e45`, OSS CAD Suite 2024-08-07) | SDF `TIMESCALE` honoured in master (PR #1501, 2026-09-13); x/z on `COND` paths treated as true (#1541, 2026-10); still no `COND`, timing checks or bus-bit SDF | the sanitiser's ps → ns rescale becomes unnecessary with master (sky130 7.1) |
-| sky130 PDK | open_pdks `c6d73a35` (volare) | not reviewed yet | check the `ms` leakage and the diode liberties (sky130 9.4; skywater-pdk #358) |
-| SRAM22 macros | old views with `default_max_transition 0.04` (older fixed copies exist in project folders) | fixed to 0.351 ns (sram22_sky130_macros PR #13, 2026-09-09); double-counting liberty unchanged; `prBoundary` declined (#504) | the slew-limit rule becomes unnecessary with new views; keep our LEF/GDS fixes (sky130 9.1) |
-| ASAP7 library | `asap7sc7p5t_28` `472f7b3` (sparse clone) and the ORFS platform copy | issues #3 (FF RVT characterisation) and #5 (INVBUF names); asap7 #42 (10 ps precision) open | ASAP7 3.3, 8.1 |
-| OSS CAD Suite | 2024-08-07 | not reviewed yet | carries our Icarus and the 0.44 Yosys |
+| component | installed default (pin) | previous version kept | upstream now (2026-10-24) | effect on our rules |
+|---|---|---|---|---|
+| LibreLane | 3.0.16 (`01ddb25`), `/media/hardware_design_tools/librelane` | OpenLane 2.3.10 (`a7b0e6d`), `/media/hardware_design_tools/openlane2` | 3.0.16 latest release; 3.1.0.dev4 pre-release | `PL_TIME_DRIVEN` false by default, `PNR_CORNERS` (sky130 5.7) |
+| OpenROAD / OpenSTA (inside LibreLane) | OpenROAD `dcf3613` (2026-02-17), OpenSTA 2.7.0 `857316f` | OpenROAD `edf00dff`, OpenSTA `b5f3a02` | OpenSTA gated-clock activity fix (OpenROAD fork PR #425, 2026-10-19), not in our version; SPEF escaped-name misses still open (#11839) | densities: no clock-stop trap (sky130 8.2); keep `legal_names.py` (5.4) |
+| Yosys | 0.62 (LibreLane, used by ORFS too); 0.70+219 (OSS CAD Suite) | 0.46 / 0.44 | `extract_fa` fix since 0.50 | the ASAP7 adder map may be safe; verify before enabling (ASAP7 5) |
+| sky130 PDK | open_pdks `8afc834` (ciel), `PDK_ROOT=/media/pdk/sky130_8afc834` | `c6d73a35` (volare), `/media/pdk/sky130A` | not reviewed beyond LibreLane's pin | **OpenLane 2's OpenSTA crashes on SPEF from the new PDK** (sky130 1) |
+| OSS CAD Suite | 2026-10-24, `/media/hardware_design_tools/oss-cad-suite` | 2024-08-07 (`oss-cad-suite-2024-08-07`) | nightly | Icarus 14 devel honours SDF `TIMESCALE` (rescale harmless) |
+| OpenROAD-flow-scripts | `ef2cb37` + `3a376ac` + SRAM-Vt aliases, `/media/pdk/OpenROAD-flow-scripts-ef2cb37` | `b4dbcb4` + `ASAP7_USESRAM` patch, `/media/pdk/OpenROAD-flow-scripts` | `REMOVE_ABC_BUFFERS` removed (2026-10-21), `ROUTING_LAYER_ADJUSTMENT` 0.25 | ASAP7 1, 5, 6 |
+| SRAM22 macros | upstream `de0a9a7` with our fixes, `/media/pdk/sram22_sky130_fixed-de0a9a7` | fixed copies of `75cbe96` in project folders | double-counting liberty unchanged; `prBoundary` declined (#504) | keep our LEF/GDS fixes (sky130 9.1) |
+| ASAP7 library | `asap7sc7p5t_28` `472f7b3` and the ORFS platform copy | | issues #5 (INVBUF names) and asap7 #42 (10 ps precision) open | ASAP7 8.1 |
 
 ## Upgrade candidates (owner decides)
 
 | candidate | gain | cost and risk |
 |---|---|---|
-| LibreLane (next to OpenLane 2.3.10) | needed for a tapeout; newer OpenROAD and OpenSTA; `PNR_CORNERS` | configuration changes; every project's numbers move; must be validated on the reference designs (`validation/`) |
-| Newer OpenSTA for power analysis only | densities, `report_activity_annotation`, gated-clock fix | power numbers move compared with published ones; run it next to the old one first |
-| ORFS update | upstream ASAP7 fixes (FF liberty, hold metrics) | loses the local SRAM-Vt patch, which must be re-applied on top of `ASAP7_USE_VT`; many ASAP7 rules change |
-| Icarus master | SDF time scale handled natively | development build; the bit-exact and annotation checks must be repeated |
-| SRAM22 views from upstream | correct slew limit | our LEF and GDS fixes must be re-applied |
+| ORFS newer than `ef2cb37` | upstream fixes since 2026-02 | needs matching (newer) OpenROAD than LibreLane 3.0.16 ships; rules in ASAP7 5–6 change |
+| OpenSTA with PR #425 (gated-clock activity) | vectorless gated-clock activity no longer overcounted | only matters for unannotated gated trees; numbers move |
+| LibreLane 3.1 | when released | revalidate on `validation/` |

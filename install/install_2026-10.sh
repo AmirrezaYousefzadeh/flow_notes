@@ -3,7 +3,7 @@
 # the defaults; the old versions stay installed for reproducing published numbers).
 # Note: the librelane step needs the FOSSi Nix cache (root: /etc/nix/nix.custom.conf), otherwise Nix compiles
 # every tool from source in the daemon, outside jobq, with all cores.
-# Usage: install_2026-10.sh <step>   steps: librelane | pdk | osscad | sram22 | orfs
+# Usage: install_2026-10.sh <step>   steps: librelane | pdk | osscad | sram22 | orfs | switch
 # Each step is submitted separately through jobq.
 set -euo pipefail
 T=/media/hardware_design_tools
@@ -57,6 +57,14 @@ case "${1:?step}" in
     git -C "$d" -c user.name=flow_notes -c user.email=none cherry-pick -x "$ORFS_FFLIB_FIX" || {
       git -C "$d" cherry-pick --abort; echo "cherry-pick of the FF liberty fix failed"; exit 3; }
     git -C "$d" log --oneline -3
+    ;;
+  switch)
+    # Done on 2026-10-24 after validation (flow_notes/validation/README.md). OpenLane 2 keeps /media/pdk/sky130A
+    # (its OpenSTA crashes on SPEF from the new PDK); the new stack gets its own stable paths.
+    ln -sfn librelane-3.0.16 "$T/librelane"
+    ln -sfn ciel/sky130/versions/$SKY130_REV "$P/sky130_8afc834"
+    [[ -L $T/oss-cad-suite ]] || mv "$T/oss-cad-suite" "$T/oss-cad-suite-2024-08-07"
+    ln -sfn "oss-cad-suite-$OSSCAD_DATE" "$T/oss-cad-suite"
     ;;
   *) echo "unknown step $1"; exit 2 ;;
 esac

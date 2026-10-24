@@ -1,0 +1,38 @@
+{
+ "session": "indy_20160630_01",
+ "clock_period_ns": 200.0,
+ "status": "accepted",
+ "attempts": [
+  {
+   "utilisation_pct": 30,
+   "status": "accepted",
+   "minutes": 1,
+   "reason": ""
+  }
+ ],
+ "cells": 828,
+ "tap_cells": 665,
+ "cell_area_um2": 8355.51,
+ "die_area_um2": 678600,
+ "core_area_um2": 611627,
+ "utilization": 0.875935,
+ "setup_ws_ns": 117.31194149433577,
+ "hold_ws_ns": 1.1268215249771174,
+ "drc_errors": 0,
+ "power_grid_violations": 0,
+ "antenna_violating_nets": 0,
+ "corner": "nom_tt_025C_1v80",
+ "cell_cap": 300000,
+ "openlane_setup_ws_ns": 117.19004409694956,
+ "openlane_hold_ws_ns": 1.0418297630595261,
+ "timing": "flow/tools/signoff_sta.tcl (renamed netlist and SPEF)",
+ "spef_unmatched": 0,
+ "pass": true,
+ "reasons": [],
+ "utilisation_pct": 30,
+ "tools": {
+  "openlane": "3.0.16",
+  "pdk": "/media/pdk/ciel/sky130/versions/8afc8346a57fe1ab7934ba5a6056ea8b43078e71/sky130A",
+  "pdk_version": "open_pdks 8afc8346a57fe1ab7934ba5a6056ea8b43078e71"
+ }
+}

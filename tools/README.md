@@ -25,4 +25,4 @@ Maintained copies of the tools the flow notes refer to. Copy what you need into 
 | `root_clock_correction_multipdk.py` | the same correction for any PDK (`--icg`, `--buf` cell-name lists; walks through `HBx`/`dly*` hold cells); different interface: two per-instance reports | sky130 8.2, ASAP7 9.6 |
 | `macro_state_correction.py` | SRAM22 read energy conditioned on the macro clock running | sky130 9.1 |
 | `rt_stats.py` | real-time statistics of a session (deadline overruns, clock duty) | |
-| `reference_flow/` | a complete sky130 OpenLane 2 measurement flow (harden, gate-level simulation, power, one-session measurement) from a verified design; variable and file names come from that design, adapt them | sky130 2 |
+| `reference_flow/` | a complete sky130 measurement flow (harden, gate-level simulation, power, one-session measurement) from a verified design, written for OpenLane 2; for LibreLane change `python3 -m openlane` to `python3 -m librelane`, the flake and `PDK_ROOT` (validated this way, `../validation/`). Variable and file names come from that design: adapt them | sky130 2 |

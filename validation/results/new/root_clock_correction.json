@@ -1,0 +1,24 @@
+{
+ "duty": 0.0013965,
+ "root_cells": {
+  "other": 4,
+  "buffer": 10,
+  "gate": 1
+ },
+ "root_cells_without_power": [],
+ "removed_W": 1.0407243394882022e-05,
+ "removed_internal_W": 8.987698561527023e-06,
+ "removed_switching_W": 1.4195448333549998e-06,
+ "report": {
+  "internal": 9.064292e-06,
+  "switching": 1.454964e-06,
+  "leakage": 2.343952e-06,
+  "total": 1.286321e-05
+ },
+ "corrected": {
+  "internal": 7.659343847297764e-08,
+  "switching": 3.5419166645000106e-08,
+  "leakage": 2.343952e-06,
+  "total": 2.455966605117978e-06
+ }
+}

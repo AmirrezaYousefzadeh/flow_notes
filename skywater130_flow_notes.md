@@ -1,6 +1,6 @@
 # SkyWater 130 nm flow notes: synthesis, hardening, gate-level simulation and power
 
-**Version 4.0, last updated 2026-10-24.** The full history is in "Version history" below.
+**Version 5.0, last updated 2026-10-24.** The full history is in "Version history" below.
 
 Read this before you synthesise, harden or measure anything on sky130 on this machine. It is written for engineers
 and AI agents. Everything here was learned the hard way, in several research designs measured on this machine:
@@ -37,6 +37,7 @@ yourself.
 | 2.1 | 2026-10-24 | rules checked against tool sources, documentation and issue trackers; sources added; version-specific behaviour of OpenSTA and Icarus; SRAM22 slew limit fixed upstream; 8.8 what a power number must state; precheck contents |
 | 3.0 | 2026-10-24 | only the maintainer edits the notes; findings go to `inbox/` |
 | 4.0 | 2026-10-24 | the notes are general: no references to individual projects. Reference tools now live in `flow_notes/tools/` (section 2); fixed SRAM22 views in `/media/pdk` (9.1); broadcast announcements in `ANNOUNCEMENTS.md` |
+| 5.0 | 2026-10-24 | **new default versions** (section 1): LibreLane 3.0.16 with open_pdks `8afc834`, OSS CAD Suite 2026-10-24; OpenLane 2 kept for earlier numbers, never with the new PDK; validation results |
 
 Contents:
 0. Ground rules on this machine
@@ -93,22 +94,41 @@ The workstation (24 cores, 62 GB RAM, one RTX 4060 Ti with 8 GB) is shared with 
 
 ## 1. Tools and paths
 
-These are the installed default versions. `ANNOUNCEMENTS.md` says when they change.
+These are the installed default versions (since 2026-10-24, validated on the reference design in
+`validation/`). `ANNOUNCEMENTS.md` says when they change.
 
 | what | where / version | how to call |
 |---|---|---|
-| PDK | `/media/pdk/sky130A` (open_pdks `c6d73a35f524070e85faff4a6a9eef49553ebc2b`, volare); also sky130B, gf180mcuA–D, ihp-sg13g2, asap7, nangate45 | `PDK_ROOT=/media/pdk`, `PDK=sky130A` |
-| OpenLane 2 | 2.3.10, checkout `/media/hardware_design_tools/openlane2` (commit `a7b0e6d`), Nix flake, with its OpenROAD, Yosys, OpenSTA 2.6.0 | `nix --extra-experimental-features "nix-command flakes" develop --accept-flake-config /media/hardware_design_tools/openlane2 -c python3 -m openlane --pdk-root /media/pdk --pdk sky130A --manual-pdk --run-tag TAG --overwrite [--to OpenROAD.STAPostPNR] config.yaml` |
-| OpenSTA | inside the same Nix shell | `nix ... develop ... -c sta -no_splash -exit script.tcl` |
-| Icarus Verilog, Yosys | OSS CAD Suite 2024-08-07 in `/media/hardware_design_tools/oss-cad-suite` (Icarus 13.0 devel s20221226-533, Yosys 0.44+1) | add its `bin/` to `PATH` |
+| LibreLane (successor of OpenLane 2) | 3.0.16, `/media/hardware_design_tools/librelane` (→ `librelane-3.0.16`), Nix flake: OpenROAD `dcf3613`, OpenSTA 2.7.0 (`857316f`), Yosys 0.62, KLayout 0.30.7, Magic 8.3.623 | `nix --extra-experimental-features "nix-command flakes" develop --accept-flake-config /media/hardware_design_tools/librelane -c python3 -m librelane --pdk-root /media/pdk/sky130_8afc834 --pdk sky130A --manual-pdk --run-tag TAG --overwrite [--to OpenROAD.STAPostPNR] config.yaml` |
+| PDK for LibreLane | open_pdks `8afc8346a57fe1ab7934ba5a6056ea8b43078e71` (the version LibreLane 3.0.16 is validated with), `PDK_ROOT=/media/pdk/sky130_8afc834` (sky130A, sky130B) | |
+| OpenSTA | inside the LibreLane Nix shell | `nix ... develop ... /media/hardware_design_tools/librelane -c sta -no_splash -exit script.tcl` |
+| Icarus Verilog, Yosys, Verilator | OSS CAD Suite 2026-10-24, `/media/hardware_design_tools/oss-cad-suite` (→ `oss-cad-suite-2026-10-24`): Icarus 14.0 devel s20260301-664, Yosys 0.70+219, Verilator 5.053 devel | add its `bin/` to `PATH` |
 | Nix | `/nix/var/nix/profiles/default` | `source /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh` |
 | fixed SRAM22 views | `/media/pdk/sram22_sky130_fixed-de0a9a7/` (section 9.1) | |
+| other PDKs | `/media/pdk`: gf180mcuA–D, ihp-sg13g2, asap7, nangate45 | |
 | OpenROAD-flow-scripts (ASAP7) | see the ASAP7 notes | |
 | Icarus models with SDF paths for other PDKs | `/media/pdk/icarus_sdf_models/` | see section 9.3 before trusting them |
 | reference tools | `/media/amir/flow_notes/tools/` (section 2) | |
 | shared job queue | `/media/amir/.jobq` | `jobq`, section 0 |
 
-There is no central Python environment yet; record the Python and package versions your project uses (section 11).
+**Previous versions, kept for reproducing earlier numbers** (do not start new work with them):
+
+| what | where / version |
+|---|---|
+| OpenLane 2 | 2.3.10, `/media/hardware_design_tools/openlane2` (`a7b0e6d`): OpenROAD `edf00dff`, OpenSTA `b5f3a02` ("2.6.0"), Yosys 0.46; `python3 -m openlane` |
+| PDK for OpenLane 2 | `/media/pdk/sky130A`, `sky130B` (open_pdks `c6d73a35`, volare) |
+| OSS CAD Suite | 2024-08-07, `/media/hardware_design_tools/oss-cad-suite-2024-08-07` (Icarus 13.0 devel s20221226-533, Yosys 0.44+1) |
+
+- **Do not combine OpenLane 2 with the new PDK.** Hardening works, but OpenLane 2's OpenSTA (`b5f3a02`) crashes
+  (segmentation fault) in the SRAM22-conditioned power analysis on SPEF extracted with the new PDK, every time. Use
+  OpenLane 2 only with `/media/pdk/sky130A`, and LibreLane with `/media/pdk/sky130_8afc834`.
+- **Moving from OpenLane 2 to LibreLane** changes the numbers. On the reference design (validation, 2026-10-24): 14 %
+  more cells (Yosys 0.62), a larger root clock tree (10 instead of 4 buffers), dynamic power +25 %, total power +0.9 %
+  (an SRAM-leakage-dominated design); SDF errors, SPEF misses and timing stay clean. Never mix versions within one set
+  of compared numbers; re-measure the baseline with the new versions.
+- **OpenSTA 2.7** stores activities as densities: the clock-stop trap of section 8.2 does not occur, `-activity` per
+  cycle is converted with the fastest clock (keep one clock, or use `-density`), and `report_activity_annotation`
+  exists.
 
 Folders that were moved keep absolute symlinks to old locations, and many scripts still name
 `/home/yousefzadeha/workspace/...`, which no longer exists. Check links with `find -xtype l` and grep for the old

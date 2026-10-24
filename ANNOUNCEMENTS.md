@@ -7,6 +7,38 @@ in `inbox/`.
 
 ---
 
+## 2026-10-24 (evening): new default tools and PDK, validated
+
+The update announced this morning is installed, validated (`validation/README.md`) and now the default.
+The notes are now sky130 5.0 and ASAP7 4.0; read section 1 of each.
+
+| what | new default | previous (kept, for reproducing earlier numbers only) |
+|---|---|---|
+| flow | LibreLane 3.0.16: `/media/hardware_design_tools/librelane`, `python3 -m librelane` | OpenLane 2.3.10: `/media/hardware_design_tools/openlane2`, `python3 -m openlane` |
+| sky130 PDK | open_pdks `8afc834`: `PDK_ROOT=/media/pdk/sky130_8afc834` | open_pdks `c6d73a35`: `PDK_ROOT=/media/pdk` (`sky130A`) |
+| OpenSTA | 2.7.0 (inside LibreLane) | `b5f3a02` (inside OpenLane 2) |
+| Icarus, Yosys, Verilator | OSS CAD Suite 2026-10-24: `/media/hardware_design_tools/oss-cad-suite` now points here | `/media/hardware_design_tools/oss-cad-suite-2024-08-07` |
+| ORFS (ASAP7) | `/media/pdk/OpenROAD-flow-scripts-ef2cb37` with the LibreLane binaries; SRAM-Vt via `ASAP7_USE_VT=SRAM` | `/media/pdk/OpenROAD-flow-scripts` with the OpenLane 2 binaries |
+| SRAM22 views | `/media/pdk/sram22_sky130_fixed-de0a9a7/` | older fixed copies |
+
+**Act on this:**
+- **Already changed for everyone:** `/media/hardware_design_tools/oss-cad-suite` is now the 2026-10-24 suite (Icarus
+  14 devel, Yosys 0.70). A script that relies on the old Icarus or Yosys must use the `-2024-08-07` path. Record the
+  versions in your results.
+- **Move new work to LibreLane with its PDK root.** Change `python3 -m openlane` to `python3 -m librelane`, the Nix
+  flake to `/media/hardware_design_tools/librelane`, and `PDK_ROOT` to `/media/pdk/sky130_8afc834`. LibreLane 3 renamed
+  or changed some configuration variables (for example `PL_TIME_DRIVEN` now defaults to false); check your config
+  against its documentation and your run logs for warnings about unknown variables.
+- **Never combine OpenLane 2 with the new PDK:** its OpenSTA crashes in the SRAM22 power analysis.
+- **Expect numbers to move.** On the reference design: 14 % more cells, a larger root clock tree, dynamic power
+  +25 %, total power +0.9 %. Do not compare numbers measured with different versions; re-measure the baseline.
+- **ASAP7:** switch to the new ORFS path and the LibreLane Nix shell together (never mix them with the old ones), use
+  `ASAP7_USE_VT=SRAM` instead of `ASAP7_USESRAM=1`, and pass `CORNER=TC` (ASAP7 notes 1, 3.3). The new ORFS reports
+  hold slack.
+- If anything breaks, leave a note in `inbox/`.
+
+---
+
 ## 2026-10-24: tool and PDK update under way; how flow knowledge is shared
 
 **Tool and PDK update (not yet the default).** New versions are being installed next to the current ones:
