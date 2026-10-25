@@ -1,6 +1,6 @@
 # SkyWater 130 nm flow notes: synthesis, hardening, gate-level simulation and power
 
-**Version 5.2, last updated 2026-10-24.** The full history is in "Version history" below.
+**Version 5.3, last updated 2026-10-24.** The full history is in "Version history" below.
 
 Read this before you synthesise, harden or measure anything on sky130 on this machine. It is written for engineers
 and AI agents. Everything here was learned the hard way, in several research designs measured on this machine:
@@ -50,6 +50,7 @@ yourself.
 | 5.0 | 2026-10-24 | **new default versions** (section 1): LibreLane 3.0.16 with open_pdks `8afc834`, OSS CAD Suite 2026-10-24; OpenLane 2 kept for earlier numbers, never with the new PDK; validation results |
 | 5.1 | 2026-10-24 | header: which rules are correctness (always) and which are silicon robustness (optional when not taping out); 5.1: default hold margins for measurement-only projects instead of a 0.5 ns overfix |
 | 5.2 | 2026-10-25 | from the inbox: timing derating was off in every OpenLane 2 run on sky130 (6.1); OpenSTA 2.7 reads SPEF with escaped names (5.4, checked); `check_annotation.py` fails a run on lost activities (8.1, section 10); pin versions in scripts (1); reference flow now on the default versions (2) |
+| 5.3 | 2026-10-25 | the queue's guide for agents is now `/media/amir/.jobq/AGENTS.md` (section 0) |
 
 Contents:
 0. Ground rules on this machine
@@ -73,7 +74,7 @@ Contents:
 The workstation (24 cores, 62 GB RAM, one RTX 4060 Ti with 8 GB) is shared with other users and other projects.
 
 - **Every heavy job goes through the shared queue `jobq`** (`/media/amir/.jobq/jobq.py`, guide in
-  `/media/amir/.jobq/README.md`). "Heavy" means longer than a few minutes, more than about 2 GB of RAM, more than 2
+  `/media/amir/.jobq/AGENTS.md`). "Heavy" means longer than a few minutes, more than about 2 GB of RAM, more than 2
   threads, or the GPU. Never start such a job with `&` or `nohup`.
   - `jobq add --name N --threads T --mem <peak GB> [--gpu MB] [--stall-min N] -- 'command'`; then
     `jobq status | log N | wait N | cancel N`. Use `--high` only when the owner asks for it.
@@ -121,7 +122,7 @@ These are the installed default versions (since 2026-10-24, validated on the ref
 | OpenROAD-flow-scripts (ASAP7) | see the ASAP7 notes | |
 | Icarus models with SDF paths for other PDKs | `/media/pdk/icarus_sdf_models/` | see section 9.3 before trusting them |
 | reference tools | `/media/amir/flow_notes/tools/` (section 2) | |
-| shared job queue | `/media/amir/.jobq` | `jobq`, section 0 |
+| shared job queue | `/media/amir/.jobq` (guide for agents: `AGENTS.md`) | `jobq`, section 0 |
 
 **Previous versions, kept for reproducing earlier numbers** (do not start new work with them):
 

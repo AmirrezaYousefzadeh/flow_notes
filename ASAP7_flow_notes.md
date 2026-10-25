@@ -1,6 +1,6 @@
 # ASAP7 flow notes: synthesis, place and route with ORFS, gate-level simulation and power
 
-**Version 4.0, last updated 2026-10-24.** The full history is in "Version history" below.
+**Version 4.1, last updated 2026-10-24.** The full history is in "Version history" below.
 
 Read this before you synthesise, place and route or measure anything on ASAP7 (the predictive 7 nm library) on this
 machine. It is written for engineers and AI agents. It collects what was learned measuring several neural-network
@@ -38,6 +38,7 @@ and never modify a shared ORFS checkout.
 | 2.0 | 2026-10-24 | only the maintainer edits the notes; findings go to `inbox/` |
 | 3.0 | 2026-10-24 | the notes are general: no references to individual projects. Reference tools in `flow_notes/tools/`; open questions instead of per-project open issues (13); broadcast announcements in `ANNOUNCEMENTS.md` |
 | 4.0 | 2026-10-24 | **new default versions** (section 1): ORFS `ef2cb37` with the LibreLane binaries, SRAM-Vt via `ASAP7_USE_VT=SRAM`, corrected RVT FF liberty, hold slack reported; the SRAM-Vt patch notes of 1, 6.3 updated |
+| 4.1 | 2026-10-25 | the queue's guide for agents is now `/media/amir/.jobq/AGENTS.md` (section 0) |
 
 Contents:
 0. Ground rules on this machine
@@ -60,7 +61,7 @@ Contents:
 ## 0. Ground rules on this machine
 
 All of section 0 of the sky130 notes applies, in particular: every heavy job through the shared queue `jobq`
-(`/media/amir/.jobq/README.md`), realistic `--mem`, never edit a running script. In addition, for ASAP7:
+(`/media/amir/.jobq/AGENTS.md`), realistic `--mem`, never edit a running script. In addition, for ASAP7:
 
 - **ORFS uses every core unless told otherwise.** `NUM_CORES` defaults to `nproc` (24): one run without it routed at
   about 520 % CPU. Always pass `NUM_CORES=$JOBQ_THREADS`.
