@@ -25,7 +25,7 @@ OUT="$(cd "$OUT" && pwd)"
 eval "$("$NEAT_PYTHON" "$F/../evaluate/subm.py" "$SUB/submission.json" "$SESSION")"   # INCDIR CLK_NS TOP MACRO_*
 LIB=sky130_fd_sc_hd
 MODELS="$PDK_ROOT/$PDK/libs.ref/$LIB/verilog"
-PIN=(taskset -c "$NEAT_CPUS" nice -n 10)
+PIN=("${NEAT_LOWPRI[@]}")
 cd "$OUT"
 
 # the toggle counter, built once (atomically: parallel measurements may start together) and rebuilt when its source changes
@@ -45,6 +45,7 @@ DEFS=(-DUNIT_DELAY='#1' -DCLK_PERIOD_NS="$CLK_NS" -DN_BINS="$NB" -DPROGRESS -I "
       -DSTREAM_HEX="\"$STREAM\"" -DOUT_FILE="\"$OUT/out.txt\""
       -DDUMP_PATH="\"$OUT/wave.vcd\"" -DDUMP_LEVEL=0 -DDUMP_MODULE=tb_neat.u_dut)
 IMAGE="${LOAD_HEX_OVERRIDE:-$INCDIR/neat_weights.hex}"
+[[ -f "$IMAGE" ]] || { echo "no configuration image $IMAGE (a design with nothing to configure ships an empty one)"; exit 1; }
 [[ -s "$IMAGE" ]] && DEFS+=(-DLOAD_HEX="\"$IMAGE\"")
 FLAGS=(-g2012)
 # source order matters: the Icarus fixes define the include guards of the broken timing cells before the library is read
@@ -80,7 +81,8 @@ wait $TPID || true
 rm -f wave.vcd
 grep -E "^TB: clock|^RT:|^PASS|^FAIL|^real" sim.log || true
 cat toggles.log
-SDF_ERRORS=$(grep -c "SDF ERROR" sim.log || true)
-[[ "$SDF_ERRORS" -eq 0 ]] || echo "WARNING: $SDF_ERRORS SDF annotation errors (see sim.log)"
+# every delay of the SDF must reach its cell: an annotation error leaves cells without delays and invalidates the run
+SDF_ERRORS=$(grep -c -E "SDF ERROR|Unable to match ModPath" sim.log || true)
+[[ "$SDF_ERRORS" -eq 0 ]] || echo "ERROR: $SDF_ERRORS SDF annotation errors (see sim.log): the measurement is not valid"
 "$NEAT_PYTHON" "$F/tools/rt_stats.py" sim.log -o rt.json --extra sdf_errors="$SDF_ERRORS" > /dev/null
-grep -q "^PASS" sim.log
+[[ "$SDF_ERRORS" -eq 0 ]] && grep -q "^PASS" sim.log

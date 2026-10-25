@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Decide from the metrics of an OpenLane run whether the hardened design is accepted (flow/harden.sh; RULES.md,
+"""Decide from the metrics of an LibreLane run whether the hardened design is accepted (flow/harden.sh; RULES.md,
 sections 3 and 5): routing DRC clean, setup and hold met at the typical corner, no power-grid violation, and at most
 CELL_CAP standard cells. Tap cells are not counted: their number grows with the core area, not with the design.
 
 The timing comes from --signoff, the result of flow/tools/signoff_sta.tcl on the renamed netlist and SPEF, in which
-every net has its parasitics; OpenLane's own sign-off loses those of the nets inside sub-modules, and its slacks are
-kept for information only. Without --signoff the OpenLane slacks are used (for runs of other flows).
+every net has its parasitics; LibreLane's own sign-off loses those of the nets inside sub-modules, and its slacks are
+kept for information only. Without --signoff the LibreLane slacks are used (for runs of other flows).
 
 Usage: check_metrics.py <run dir>/final/metrics.json [--signoff signoff.json] [--corner nom_tt_025C_1v80]
                         [--cell-cap 300000] [-o summary.json]
@@ -44,7 +44,7 @@ def main():
     }
     if a.signoff:
         signoff = json.load(open(a.signoff))
-        summary["openlane_setup_ws_ns"], summary["openlane_hold_ws_ns"] = summary["setup_ws_ns"], summary["hold_ws_ns"]
+        summary["librelane_setup_ws_ns"], summary["librelane_hold_ws_ns"] = summary["setup_ws_ns"], summary["hold_ws_ns"]
         summary["setup_ws_ns"], summary["hold_ws_ns"] = signoff["setup_ws_ns"], signoff["hold_ws_ns"]
         summary["timing"] = "flow/tools/signoff_sta.tcl (renamed netlist and SPEF)"
         summary["spef_unmatched"] = signoff["spef_unmatched"]

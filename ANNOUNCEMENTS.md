@@ -7,6 +7,24 @@ in `inbox/`.
 
 ---
 
+## 2026-10-25: derating bug in OpenLane 2, new annotation check, version pinning
+
+sky130 notes 5.2. From findings reported through the inbox, checked by the maintainer:
+- **Every OpenLane 2 run on sky130 was timed without the intended ±5 % derating** (integer division in its
+  `base.sdc`; notes 6.1). Slacks of OpenLane 2 runs were optimistic by up to 5 % of each path delay, for setup and
+  hold. LibreLane is correct. If your project's SDC was copied from OpenLane 2's `base.sdc`, divide by `100.0`. Keep
+  this in mind when you compare old OpenLane 2 timing with new results.
+- **OpenSTA 2.7 (the default) reads SPEF files with escaped hierarchical names correctly** (notes 5.4). Renaming with
+  `legal_names.py` is still needed for Icarus SDF annotation.
+- **New tool `tools/check_annotation.py`**: fails the power analysis when a measured activity was lost, instead of
+  asking you to look through millions of expected "not found" names (notes 8.1, section 10). Add it to your flow.
+- **Pin your versions in your scripts** (notes 1): name the dated directories (`oss-cad-suite-2026-10-24`,
+  `librelane-3.0.16`) if you must keep versions, and check `iverilog -V` and the PDK's `SOURCES` against your pins.
+  The generic paths follow the defaults.
+- `tools/reference_flow/` now runs on the default versions and fails on SDF errors and lost activities.
+
+---
+
 ## 2026-10-24 (late): margins are optional when you only measure
 
 sky130 notes 5.1 (header and section 5.1): rules are now marked as either correctness of the number (always required:

@@ -40,12 +40,13 @@ TOP="$TOP" MACRO_CELL="$MACRO_CELL" MACRO_INSTANCES="$MACRO_INSTANCES" "$F/power
 
 MINUTES=$(( ($(date +%s) - T0) / 60 ))
 "$NEAT_PYTHON" - "$OUT/gls/rt.json" "$OUT/power/power.json" "$OUT/measure.json" "$SESSION" "$CLK_NS" "$MINUTES" \
-    "$(iverilog -V 2>&1 | head -n 1)" <<'PY'
+    "$(iverilog -V 2>&1 | head -n 1)" "$(git -C "$LIBRELANE_ROOT" describe --tags --always 2> /dev/null || echo unknown)" \
+    "$(head -n 1 "$PDK_ROOT/$PDK/SOURCES" 2> /dev/null || echo unknown)" <<'PY'
 import json, sys
 rt, power = json.load(open(sys.argv[1])), json.load(open(sys.argv[2]))
-out, session, clk, minutes, iverilog = sys.argv[3], sys.argv[4], float(sys.argv[5]), int(sys.argv[6]), sys.argv[7]
+out, session, clk, minutes = sys.argv[3], sys.argv[4], float(sys.argv[5]), int(sys.argv[6])
 measure = {"session": session, "clock_period_ns": clk, "activity": "SDF-annotated gate level, typical corner",
-           "runtime_min": minutes, "simulator": iverilog}
+           "runtime_min": minutes, "simulator": sys.argv[7], "librelane": sys.argv[8], "pdk": sys.argv[9]}
 measure.update({k: rt[k] for k in ("bins", "events", "overruns", "clk_cycles_in_window", "latency_ns_mean",
                                    "latency_ns_max", "active_ns_mean", "active_ns_max", "sdf_errors") if k in rt})
 measure["cycles_per_bin"] = rt["clk_cycles_in_window"] / rt["bins"]

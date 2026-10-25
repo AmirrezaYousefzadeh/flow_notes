@@ -1,6 +1,6 @@
 # SkyWater 130 nm flow notes: synthesis, hardening, gate-level simulation and power
 
-**Version 5.1, last updated 2026-10-24.** The full history is in "Version history" below.
+**Version 5.2, last updated 2026-10-24.** The full history is in "Version history" below.
 
 Read this before you synthesise, harden or measure anything on sky130 on this machine. It is written for engineers
 and AI agents. Everything here was learned the hard way, in several research designs measured on this machine:
@@ -49,6 +49,7 @@ yourself.
 | 4.0 | 2026-10-24 | the notes are general: no references to individual projects. Reference tools now live in `flow_notes/tools/` (section 2); fixed SRAM22 views in `/media/pdk` (9.1); broadcast announcements in `ANNOUNCEMENTS.md` |
 | 5.0 | 2026-10-24 | **new default versions** (section 1): LibreLane 3.0.16 with open_pdks `8afc834`, OSS CAD Suite 2026-10-24; OpenLane 2 kept for earlier numbers, never with the new PDK; validation results |
 | 5.1 | 2026-10-24 | header: which rules are correctness (always) and which are silicon robustness (optional when not taping out); 5.1: default hold margins for measurement-only projects instead of a 0.5 ns overfix |
+| 5.2 | 2026-10-25 | from the inbox: timing derating was off in every OpenLane 2 run on sky130 (6.1); OpenSTA 2.7 reads SPEF with escaped names (5.4, checked); `check_annotation.py` fails a run on lost activities (8.1, section 10); pin versions in scripts (1); reference flow now on the default versions (2) |
 
 Contents:
 0. Ground rules on this machine
@@ -130,6 +131,12 @@ These are the installed default versions (since 2026-10-24, validated on the ref
 | PDK for OpenLane 2 | `/media/pdk/sky130A`, `sky130B` (open_pdks `c6d73a35`, volare) |
 | OSS CAD Suite | 2024-08-07, `/media/hardware_design_tools/oss-cad-suite-2024-08-07` (Icarus 13.0 devel s20221226-533, Yosys 0.44+1) |
 
+- **Pin your versions in your scripts.** The generic paths (`/media/hardware_design_tools/oss-cad-suite`,
+  `/media/hardware_design_tools/librelane`, `/media/pdk/sky130_8afc834`) follow the defaults and change with an
+  announcement. A project that must keep its versions (for example during a paper) names the dated or versioned
+  directory (`oss-cad-suite-2026-10-24`, `librelane-3.0.16`), and its scripts check `iverilog -V` and the PDK's
+  `$PDK_ROOT/sky130A/SOURCES` against the pinned build and warn or stop on a mismatch (which also catches a mix of
+  OpenLane 2 with the new PDK).
 - **Do not combine OpenLane 2 with the new PDK.** Hardening works, but OpenLane 2's OpenSTA (`b5f3a02`) crashes
   (segmentation fault) in the SRAM22-conditioned power analysis on SPEF extracted with the new PDK, every time. Use
   OpenLane 2 only with `/media/pdk/sky130A`, and LibreLane with `/media/pdk/sky130_8afc834`.
@@ -152,8 +159,9 @@ them. Copy them into your project and record the `flow_notes` commit you copied 
 the toggle counter on this machine already differ). `tools/reference_flow/` is a complete flow taken from the most
 thoroughly verified design on this machine (hardening, sign-off, gate-level simulation, power, one-session
 measurement; it reproduces the same power to the last digit). Its variable and file names come from that design:
-adapt them. Known gaps of that flow: it warns about but does not fail on SDF errors, it does not count
-`Unable to match ModPath`, and it starts several Icarus compilations at once.
+adapt them. It runs on the default versions (LibreLane 3.0.16), fails a run on any SDF annotation error or lost
+activity (`check_annotation.py`, 8.1), records OpenSTA's group totals, and pins no CPUs under `jobq`. Running several
+sessions in one queue job, declare the memory of all their Icarus compilations together.
 
 ## 3. RTL rules for a design you want to measure
 
@@ -233,19 +241,24 @@ netlist as `\u_rom.u_col_0/_307_`, `\g_ws[9].u_icg` or `\u_demux/_000_`.
 - **Icarus SDF annotation** splits the instance name at the dot, logs `SDF ERROR: ... Cannot find X in scope`, and
   simulates the cell without its delays. The activity then misses glitches. Rewriting the SDF name as a Verilog
   escaped name does not help.
-- **OpenSTA SPEF reading.** `*DIVIDER /` makes every slash a hierarchy divider, so the net is not found and loses its
-  parasitics. OpenROAD writes three spellings: `a\.b\/c`, `a\.b/c` and the bare `a/c`.
-- **OpenLane's own sign-off** (`OpenROAD.STAPostPNR`) reads the same SPEF and loses the same parasitics.
+- **OpenSTA SPEF reading (OpenLane 2 only).** In OpenLane 2's OpenSTA (`b5f3a02`), `*DIVIDER /` makes every slash a
+  hierarchy divider, so the net is not found and loses its parasitics; OpenROAD writes three spellings: `a\.b\/c`,
+  `a\.b/c` and the bare `a/c`. OpenLane 2's own sign-off (`OpenROAD.STAPostPNR`) loses the same parasitics.
+  **The default OpenSTA 2.7 (LibreLane 3.0.16) reads these SPEFs correctly:** on the same 100 000-cell design it
+  reported 0 missing nets where `b5f3a02` reported 803 760 (checked 2026-10-25). It still warns
+  `net ... not found` for nets that really are missing, so the zero-warning check stays valid. LibreLane's own
+  `STAPostPNR` on a kept-hierarchy design has not been compared with an own sign-off yet.
 - **Effect:** 40 184 SDF errors and 803 757 unmatched SPEF entries in a 100 000-cell decoder; its average power rose
   from 7.00 to 8.18 µW (+17 %) once both were fixed. A kept-hierarchy ASAP7 design in ORFS lost 4.87 million SPEF
   entries.
-- **Known upstream, not fixed in our version:** OpenROAD issues #3218 and #3211 (closed as stale; the maintainers
+- **Known upstream:** OpenROAD issues #3218 and #3211 (closed as stale; the maintainers
   blame the SPEF writer's escaping), #6339, PR #8772 (Nov 2025, partial fix) and the open #11839 (Oct 2026, 431 k
   "net not found" on OpenTitan). `read_spef` inside OpenROAD on the same database does not show it; the stand-alone
   `sta` does. `set_hierarchy_separator` is not a fix. LibreLane's `SYNTH_HIERARCHY_MODE: keep` has an open bug
   (librelane #1020).
 - **Fix:** `tools/legal_names.py` renames every escaped identifier to a plain one, the same way in netlist, SDF and
-  SPEF. Simulate, time and analyse power on the renamed copies.
+  SPEF. Simulate, time and analyse power on the renamed copies. With the default tools, renaming is still needed for
+  Icarus; one renamed copy then serves simulation, sign-off and power alike.
 - A flat design whose only escaped names are nets without a slash (`\g_ffs.s_pad[0]`) reads correctly, with zero SPEF
   misses.
 
@@ -282,6 +295,12 @@ it is characterised at −40 °C.
 - Exceptions must match objects. After flattening, flip-flops are named `_12345_` and only nets keep the RTL names,
   so `get_cells -quiet u_sleep/sleeping` or `get_cells -quiet -hierarchical *sel_r*` match nothing and the constraint
   silently does nothing. Count the objects an exception matches, and fail at zero.
+- **Timing derating was off in every OpenLane 2 run on sky130.** OpenLane 2.3.10's `base.sdc` computes
+  `set_timing_derate -early [expr 1-[expr $::env(TIME_DERATING_CONSTRAINT) / 100]]`; the PDK sets the constraint to
+  the integer 5, and Tcl's integer division gives 0, so both derate factors were exactly 1.0 instead of 0.95 / 1.05.
+  Slacks were optimistic by up to 5 % of each path delay (late for setup, early for hold), and the resizer repaired
+  correspondingly less. LibreLane divides by `100.0`. Any project SDC copied from OpenLane 2's `base.sdc` must be fixed
+  the same way. The effect on power or slack has not been measured yet.
 - Any SDC change means hardening again. Removing a latch waiver added 53 hold buffers to one design and 930 to
   another.
 
@@ -378,10 +397,15 @@ Check clock latency and skew after routing, not only slack.
 - Read the liberty files, the renamed netlist and the SPEF.
 - Set `set_power_activity -input -activity 0 -duty 0`: OpenSTA's default for unannotated inputs is 0.1 transitions
   per cycle.
-- Then apply the measured per-pin activities, nets last (7.2). Count the pins that were not found, and look at the
-  count.
-- **OpenSTA version.** OpenLane 2.3.10 builds OpenSTA commit `b5f3a02` (2024-10-02), which reports "2.6.0"; later
-  commits carry the same label. In it, `report_activity_annotation` does not exist (added 2025-01-15; a script calling
+- Then apply the measured per-pin activities, nets last (7.2), and **fail the run if any measured activity was
+  lost** (`tools/check_annotation.py <sta out dir> <netlist> <liberty>...`). The raw "not found" list is useless by
+  eye: it has millions of expected names (supply pins, internal signals of the cell and macro models such as
+  `notifier`, `D_delayed`, `and0_out_X`). The tool counts as lost only names that are signal pins of the instance's
+  cell (liberty `pin`/`bus`, not `pg_pin`), instances missing from the netlist, and top-level names. On real designs:
+  4–6 million names not found, 0 lost, in 5 s.
+- **OpenSTA version.** The default (LibreLane 3.0.16) has OpenSTA 2.7.0, with `report_activity_annotation`.
+  OpenLane 2.3.10 builds OpenSTA commit `b5f3a02` (2024-10-02), which reports "2.6.0"; later commits carry the same
+  label. In it, `report_activity_annotation` does not exist (added 2025-01-15; a script calling
   it silently checks nothing), `set_clock_sense` is deprecated in favour of `set_sense -type clock`, and
   `read_power_activities` in favour of `read_vcd`.
 - `set_power_activity -input` applies to every timing root, including tie-cell outputs (OpenSTA issue #539).
@@ -550,7 +574,7 @@ one cycle after the last word.
 | setup and hold at the sign-off corners, with every net's parasitics | met |
 | gate-level outputs against RTL outputs | bit-exact over the whole window |
 | testbench stimulus | non-empty, every bin or sample accounted for |
-| annotated pins not found | 0, or listed and explained |
+| measured activities lost (`check_annotation.py`) | 0, and the run fails otherwise |
 | pin and net activities of the same net | consistent (net written last) |
 | clock duty d used for the root-clock correction | the measured one (clock cycles × period / window) |
 | `set_clock_sense -stop_propagation` in the power script | absent |

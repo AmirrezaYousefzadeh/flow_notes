@@ -1,4 +1,4 @@
-# NEAT BMI decoder challenge: the OpenLane 2 configuration of every submission. flow/harden.sh fills the @...@ fields from
+# NEAT BMI decoder challenge: the LibreLane configuration of every submission. flow/harden.sh fills the @...@ fields from
 # submission.json (RTL files, include directory, clock period) and from the attempt (utilisation, placement density);
 # flow/tools/macro_config.py adds the SRAM22 macros and their floorplan. Everything else is fixed:
 #   sky130A / sky130_fd_sc_hd, sign-off at the typical corner (tt, 1.8 V, 25 C) by flow/tools/check_metrics.py,
@@ -18,7 +18,7 @@ STA_THREADS: 2
 FP_SIZING: relative
 FP_CORE_UTIL: @UTIL@
 PL_TARGET_DENSITY_PCT: @DENS@
-DECAP_CELL: []                       # decap-free fill: the measured leakage is that of the logic (and the macros)
+DECAP_CELLS: []                      # decap-free fill: the measured leakage is that of the logic (and the macros)
 RUN_HEURISTIC_DIODE_INSERTION: false # heuristic diodes break legalisation at high utilisation; diodes on input ports only
 DIODE_ON_PORTS: in
 RUN_ANTENNA_REPAIR: false

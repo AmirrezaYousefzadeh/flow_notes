@@ -1,4 +1,4 @@
-# Per-pin activity power of a hardened neat_decoder with OpenSTA (run by flow/power.sh inside the OpenLane environment).
+# Per-pin activity power of a hardened neat_decoder with OpenSTA (run by flow/power.sh inside the LibreLane environment).
 # Environment: TOP NETLIST SPEF LIB_SC PERIOD_NS OUT ACT_TCL, for SRAM22 designs LIB_SRAM and MACRO_INST, optionally
 # EXTRA_ACT_TCL (activities that override the measured ones: the macro state correction) and CLK_PORT (default clk).
 # Writes OUT/power_vcd.rpt (the group table) and OUT/power_vcd_by_instance.rpt (one line per instance).
@@ -23,5 +23,4 @@ source $::env(ACT_TCL)
 if {[info exists ::env(EXTRA_ACT_TCL)]} { source $::env(EXTRA_ACT_TCL); puts "EXTRA_ACT_TCL: $::env(EXTRA_ACT_TCL)" }
 report_power -digits 6 > $OUT/power_vcd.rpt
 report_power -instances [get_cells *] -digits 4 > $OUT/power_vcd_by_instance.rpt
-if {[catch {report_activity_annotation > $OUT/activity_annotation.rpt} err]} { puts "NOTE: $err" }
 puts "WROTE $OUT/power_vcd.rpt"

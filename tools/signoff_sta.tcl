@@ -1,5 +1,5 @@
 # Sign-off timing of a routed run at the typical corner, with the parasitics of every net (flow/harden.sh).
-# OpenLane's own sign-off reads the SPEF of the original netlist, whose escaped hierarchical names it cannot match
+# LibreLane's own sign-off reads the SPEF of the original netlist, whose escaped hierarchical names it cannot match
 # (flow/tools/legal_names.py): the nets inside sub-modules would be timed without their wires. This script reads the
 # renamed netlist and SPEF instead, so that every net has its parasitics.
 # Env: LIB_SC (liberty files), LIB_MACROS (optional), NETLIST, SPEF, TOP, SDC (and the variables it reads), OUT

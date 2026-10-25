@@ -34,17 +34,19 @@ if [[ -n "$MACRO_INSTANCES" ]]; then
 fi
 [[ -f "$NETLIST" && -f "$SPEF" ]] || { echo "no renamed netlist and SPEF in $GLS (run flow/gls.sh first)"; exit 1; }
 
-sta_run() {   # <out dir> [env assignments]: OpenSTA inside the OpenLane environment, then the sanity checks of its log
+sta_run() {   # <out dir> [env assignments]: OpenSTA inside the LibreLane environment, then the sanity checks of its log
   local out="$1"; shift
   mkdir -p "$out"
-  env "$@" OUT="$out" ACT_TCL="$OUT/activity.tcl" taskset -c "$NEAT_CPUS" nice -n 10 \
-    nix --extra-experimental-features "nix-command flakes" develop --accept-flake-config "$OPENLANE_ROOT" -c \
+  env "$@" OUT="$out" ACT_TCL="$OUT/activity.tcl" "${NEAT_LOWPRI[@]}" \
+    nix --extra-experimental-features "nix-command flakes" develop --accept-flake-config "$LIBRELANE_ROOT" -c \
     sta -no_splash -exit "$F/tools/power_sta.tcl" > "$out/sta.log" 2>&1 || { tail -n 20 "$out/sta.log"; exit 1; }
   local unmatched boxes
   unmatched=$(grep -c "spef.* not found" "$out/sta.log" || true)
   boxes=$(grep "Creating black box" "$out/sta.log" | grep -vE "tapvpwrvgnd|__fill_|__decap_" || true)
   [[ "$unmatched" -eq 0 ]] || { echo "$unmatched SPEF entries without a match in the netlist (see $out/sta.log)"; exit 1; }
   [[ -z "$boxes" ]] || { echo "cells without a liberty model: $boxes"; exit 1; }
+  "$NEAT_PYTHON" "$F/tools/check_annotation.py" "$out" "$NETLIST" "$LIB_SC" ${LIB_SRAM:+"$LIB_SRAM"} > "$out/annotation.log" ||
+    { cat "$out/annotation.log"; exit 1; }                # a measured activity that missed its pin
 }
 
 echo "==> activities from $GLS/toggles.tsv"
@@ -72,10 +74,10 @@ echo "==> root-clock correction (clock duty $DUTY)"
 "$NEAT_PYTHON" "$F/tools/root_clock_correction.py" "$NETLIST" clk "$DUTY" "$REPORT" -o "$OUT/root_clock_correction.json"
 
 "$NEAT_PYTHON" - "$OUT/root_clock_correction.json" "$GLS/rt.json" "$OUT/power.json" "$DUTY" \
-    "$OUT/macro_state_correction.json" <<'PY'
+    "$OUT/macro_state_correction.json" "$REPORT/power_vcd.rpt" <<'PY'
 import json, os, sys
 corr, rt = json.load(open(sys.argv[1])), json.load(open(sys.argv[2]))
-out, duty, macro = sys.argv[3], float(sys.argv[4]), sys.argv[5]
+out, duty, macro, groups = sys.argv[3], float(sys.argv[4]), sys.argv[5], sys.argv[6]
 total, window_s = corr["corrected"], rt["window_ns"] * 1e-9
 power = {
     "p_total_uW": total["total"] * 1e6,                 # average power over the real-time window
@@ -87,6 +89,9 @@ power = {
     "root_clock_removed_uW": corr["removed_W"] * 1e6,
     "clock_duty": duty, "window_s": window_s, "bins": rt["bins"], "events": rt["events"],
 }
+# information: OpenSTA's group totals before the root-clock correction (a combinational share near zero means lost activity)
+power["sta_groups_uW"] = {f[0].lower(): float(f[4]) * 1e6 for f in (line.split() for line in open(groups))
+                          if len(f) == 6 and f[0] in ("Sequential", "Combinational", "Clock", "Macro")}
 if os.path.exists(macro):
     power["macro_correction_uW"] = json.load(open(macro))["added_internal_W"] * 1e6   # information: already in P_STA
 power["e_bin_nJ"] = power["p_total_uW"] * window_s / rt["bins"] * 1e3

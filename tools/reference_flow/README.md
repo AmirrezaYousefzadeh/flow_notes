@@ -7,11 +7,11 @@ nothing else. Everything here is what the organisers run, so numbers obtained at
 | File | What it does |
 |---|---|
 | `LESSONS.md` | the pitfalls of the open sky130 tools met while building this flow, and the checks against them |
-| `harden.sh` | `harden.sh <submission> <session> <work dir>`: one OpenLane 2 run, synthesis to sign-off STA, at the utilisation declared in `submission.json`, with 20 % as the fallback; a watchdog stops a run whose detailed routing cannot converge. `SYNTH_ONLY=1 harden.sh ...` synthesises only (minutes), for a size estimate. Environment: `CELL_CAP`, `WATCHDOG_IDLE_H`, `WATCHDOG_MAX_H` |
+| `harden.sh` | `harden.sh <submission> <session> <work dir>`: one LibreLane run, synthesis to sign-off STA, at the utilisation declared in `submission.json`, with 20 % as the fallback; a watchdog stops a run whose detailed routing cannot converge. `SYNTH_ONLY=1 harden.sh ...` synthesises only (minutes), for a size estimate. Environment: `CELL_CAP`, `WATCHDOG_IDLE_H`, `WATCHDOG_MAX_H` |
 | `measure.sh` | the official measurement of one session: `gls.sh` on the first 5000 test bins, then `power.sh` → `measure.json` |
 | `gls.sh` | gate-level simulation of the accepted netlist on a stream, typical-corner cell delays annotated, the waveform streamed into the toggle counter |
 | `power.sh` | per-pin OpenSTA power from the toggle counts, with the root-clock correction and, for macros, the state correction → `power.json` |
-| `config.template.yaml` | the OpenLane 2 configuration; `harden.sh` fills in the files, the clock, the constraints and the utilisation |
+| `config.template.yaml` | the LibreLane configuration; `harden.sh` fills in the files, the clock, the constraints and the utilisation |
 | `neat_decoder.sdc` | timing constraints: one clock, input and output delays, `reset` the only false path |
 | `pdn_cfg_sram22.tcl` | the power grid of designs with SRAM22 macros (connects the macros' supply pins) |
 | `macros/` | the SRAM22 2048 x 32 macro, the only macro teams may use, and a small test design (`macros/README.md`) |
@@ -22,6 +22,7 @@ nothing else. Everything here is what the organisers run, so numbers obtained at
 | `tools/sdf_sanitize_for_icarus.py`, `tools/sky130_timing_icarus_fixes.v`, `tools/gen_phys_stubs.py` | make the SDF, the sky130 timing models and the physical-only cells digestible for Icarus Verilog |
 | `tools/vcd_toggles.c` | counts the transitions and high times of every signal of a VCD stream without storing it |
 | `tools/toggles_to_activity.py` | turns the counts into OpenSTA activity commands |
+| `tools/check_annotation.py` | fails the power analysis if a measured activity missed its cell pin |
 | `tools/power_sta.tcl` | the OpenSTA script: liberty, netlist, SPEF, propagated clock, measured activities, reports |
 | `tools/root_clock_correction.py` | scales the power of the root clock network by the measured clock duty |
 | `tools/macro_state_correction.py` | conditions the macros' state-dependent read energy on the clock running |
@@ -37,9 +38,10 @@ run is accepted when all of these hold:
 - the design has at most 300 000 standard cells, tap cells not counted (their number follows the core area, not the
   design).
 
-The timing is that of `tools/signoff_sta.tcl`: OpenSTA on the renamed netlist and SPEF of `tools/legal_names.py`.
-OpenLane's own sign-off reads the original SPEF, whose names of nets inside sub-modules it cannot match, so it times
-those nets without their wires; its slacks are kept in `check.json` for information. The flow stops after sign-off
+The timing is that of `tools/signoff_sta.tcl`: OpenSTA on the renamed netlist and SPEF of `tools/legal_names.py`, the
+same copies the simulation and the power analysis read, and it stops on any SPEF entry without a net. LibreLane's own
+sign-off slacks are kept in `check.json` for comparison. The constraints apply the PDK's 5 % timing derating. The flow
+stops after sign-off
 timing: no GDS streamout, no Magic or KLayout DRC, no LVS, no antenna repair (antenna violations are reported, not
 checked). The watchdog stops
 a run with more than 500 000 routing violations after 3 router iterations, 20 000 after 6, 3 000 after 10, no
@@ -70,9 +72,9 @@ and the load of the outputs beyond the defaults of the constraints, and anything
 
 The gate-level simulation and the power analysis run on renamed copies of the netlist, SDF and SPEF
 (`tools/legal_names.py`): Icarus Verilog cannot annotate a cell whose instance name contains a dot, which is how
-OpenROAD names the cells of sub-modules and generate blocks, and OpenSTA reads a slash in a SPEF name as a hierarchy
-divider. `rt.json` of the simulation records the SDF annotation errors (0 expected); `power.sh` stops when a SPEF
-entry finds no net or a cell has no liberty model.
+OpenROAD names the cells of sub-modules and generate blocks (older OpenSTA versions also lost the SPEF entries of such
+names). The simulation fails on any SDF annotation error; `power.sh` stops when a SPEF entry finds no net, a cell has
+no liberty model, or a measured activity misses its pin (`tools/check_annotation.py`).
 
 ## Pitfalls seen in the examples
 
@@ -90,11 +92,12 @@ each column's logic next to its consumer (`neat_rom_col` in `submissions/baselin
 ## Utilisation
 
 The utilisation changes the wire length and the buffering, and with them the power by a few per cent in either
-direction: the feedforward reference core (the same netlist, 200 bins) measured 2.38 µW hardened at 30 % and 2.22 µW
-at 20 %, with longer routes in the denser core and more clock buffers in the larger one. It also decides whether a
+direction: the feedforward reference core (the same netlist, 200 bins, measured with the earlier OpenLane 2 flow)
+measured 2.38 µW hardened at 30 % and 2.22 µW at 20 %, with longer routes in the denser core and more clock buffers in the larger one. It also decides whether a
 design routes at all. Teams declare their utilisation and explore it at home; the flow is deterministic.
 
 ## CPU budget
 
 Every script respects `NEAT_THREADS` of `env/env.sh` (default 10, or fewer on a smaller machine): the detailed router
-gets `NEAT_THREADS - 2` threads, STA two, and every tool is pinned to the first `NEAT_THREADS` CPUs at low priority.
+gets `NEAT_THREADS - 2` threads, STA two, and every tool runs at low priority, pinned to the first `NEAT_THREADS` CPUs
+(`NEAT_CPUS`; set it empty for no pinning).

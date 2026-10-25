@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Harden a submission with OpenLane 2 under the challenge's fixed flow (RULES.md, section 5).
+# Harden a submission with LibreLane under the challenge's fixed flow (RULES.md, section 5).
 #
 # Usage: flow/harden.sh <submission dir> <session> <work dir> [utilisations, e.g. "30 25" (experiments only)]
 #        SYNTH_ONLY=1 flow/harden.sh <submission dir> <session> <work dir>    synthesis only, a size estimate in minutes
@@ -8,7 +8,7 @@
 # close. A run is accepted when flow/tools/check_metrics.py passes it: routing DRC clean, setup and hold met at the
 # typical corner, no power-grid violation, at most CELL_CAP standard cells (default 300000, tap cells excluded). The
 # timing is that of flow/tools/signoff_sta.tcl on the renamed netlist and SPEF (flow/tools/legal_names.py), so that the
-# nets inside sub-modules keep their parasitics; OpenLane's own sign-off loses them.
+# nets inside sub-modules keep their parasitics; LibreLane's own sign-off loses them.
 # Designs with SRAM22 macros are synthesised first, for their standard-cell area, and get an absolute floorplan with
 # the macros in a column on the left (flow/tools/macro_config.py); the macro's GDS is fetched when missing.
 # A watchdog stops an attempt whose detailed routing cannot converge (more than 500 000 violations after 3 iterations,
@@ -46,15 +46,15 @@ text = text.replace("@INCDIRS@", f'["{incdir}"]')
 open(out, "w").write(text)
 PY
 if [[ -n "$MACRO_INSTANCES" && ! -f "$F/macros/$MACRO_CELL/$MACRO_CELL.gds" ]]; then
-  "$F/macros/fetch.sh"                                    # OpenLane checks every file of the configuration at load time
+  "$F/macros/fetch.sh"                                    # LibreLane checks every file of the configuration at load time
 fi
 
-# ---- one OpenLane run, and how to stop it
-ACTIVE=""                                                 # process group of the running OpenLane, if any
-run_openlane() {   # <config> <run tag> <last step> <log>: in the background, as the leader of its own process group
-  ( cd "$WORK" && exec setsid taskset -c "$NEAT_CPUS" nice -n 10 \
-      nix --extra-experimental-features "nix-command flakes" develop --accept-flake-config "$OPENLANE_ROOT" -c \
-      python3 -m openlane --pdk-root "$PDK_ROOT" --pdk "$PDK" --manual-pdk --run-tag "$2" --overwrite --to "$3" "$1" \
+# ---- one LibreLane run, and how to stop it
+ACTIVE=""                                                 # process group of the running LibreLane, if any
+run_librelane() {   # <config> <run tag> <last step> <log>: in the background, as the leader of its own process group
+  ( cd "$WORK" && exec setsid "${NEAT_LOWPRI[@]}" \
+      nix --extra-experimental-features "nix-command flakes" develop --accept-flake-config "$LIBRELANE_ROOT" -c \
+      python3 -m librelane --pdk-root "$PDK_ROOT" --pdk "$PDK" --manual-pdk --run-tag "$2" --overwrite --to "$3" "$1" \
     ) > "$4" 2>&1 &
   ACTIVE=$!                                               # setsid did not fork: this pid leads the group of every tool
 }
@@ -64,7 +64,7 @@ stop_group() {     # <pgid>: TERM to the whole group, KILL after a minute
   kill -KILL -- "-$1" 2> /dev/null || true
 }
 trap '[[ -n "$ACTIVE" ]] && stop_group "$ACTIVE"' INT TERM EXIT
-wait_openlane() {  # wait for the active run without a watchdog; returns its exit status
+wait_librelane() {  # wait for the active run without a watchdog; returns its exit status
   local status=0; wait "$ACTIVE" || status=$?; ACTIVE=""; return $status
 }
 
@@ -72,8 +72,8 @@ synthesise() {     # <config>: synthesis only; the metrics of state_out.json
   sed -e "s/@UTIL@/50/" -e "s/@DENS@/60/" "$WORK/config.template.yaml" > "$1"
   [[ -z "$MACRO_INSTANCES" ]] ||
     "$NEAT_PYTHON" "$F/tools/macro_config.py" "$1" "$F/macros" "$MACRO_CELL" $MACRO_INSTANCES --synthesis-only
-  run_openlane "$1" synth Yosys.Synthesis "$WORK/logs/openlane_synth.log"
-  wait_openlane || { tail -n 5 "$WORK/logs/openlane_synth.log"; exit 1; }
+  run_librelane "$1" synth Yosys.Synthesis "$WORK/logs/librelane_synth.log"
+  wait_librelane || { tail -n 5 "$WORK/logs/librelane_synth.log"; exit 1; }
 }
 
 if [[ "${SYNTH_ONLY:-0}" == "1" ]]; then
@@ -156,8 +156,8 @@ PY
     export LIB_SC="$PDK_ROOT/$PDK/libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib" \
            LIB_MACROS="$macro_libs" NETLIST="$out/design.nl.v" SPEF="$out/design.spef" TOP="$TOP" \
            SDC="$F/neat_decoder.sdc" OUT="$out"
-    taskset -c "$NEAT_CPUS" nice -n 10 \
-      nix --extra-experimental-features "nix-command flakes" develop --accept-flake-config "$OPENLANE_ROOT" -c \
+    "${NEAT_LOWPRI[@]}" \
+      nix --extra-experimental-features "nix-command flakes" develop --accept-flake-config "$LIBRELANE_ROOT" -c \
       sta -no_splash -exit "$F/tools/signoff_sta.tcl"
   ) > "$out/sta.log" 2>&1 || return 1
   "$NEAT_PYTHON" - "$out/sta.log" "$out/signoff.json" <<'PY'
@@ -192,7 +192,7 @@ for U in $UTILS; do
       --std-area "$STD_AREA" --utilisation "$U"
   echo "==== $SESSION: clock $CLK_NS ns, utilisation $U % (density $DENS %), run $TAG  ($(date +%H:%M))"
   T0=$(date +%s)
-  run_openlane "$CFG" "$TAG" OpenROAD.STAPostPNR "$WORK/logs/openlane_$TAG.log"
+  run_librelane "$CFG" "$TAG" OpenROAD.STAPostPNR "$WORK/logs/librelane_$TAG.log"
   STOPPED=$(watchdog "$WORK/runs/$TAG")
   wait "$ACTIVE" 2> /dev/null || true; ACTIVE=""
   MIN=$(( ($(date +%s) - T0) / 60 ))
@@ -201,9 +201,9 @@ for U in $UTILS; do
   fi
   METRICS="$WORK/runs/$TAG/final/metrics.json"
   if [[ ! -f "$METRICS" ]]; then
-    echo "   run $TAG produced no metrics after $MIN min (see logs/openlane_$TAG.log)"
-    tail -n 5 "$WORK/logs/openlane_$TAG.log"
-    record "$U" failed "$MIN" "OpenLane stopped before sign-off (see logs/openlane_$TAG.log)"; continue
+    echo "   run $TAG produced no metrics after $MIN min (see logs/librelane_$TAG.log)"
+    tail -n 5 "$WORK/logs/librelane_$TAG.log"
+    record "$U" failed "$MIN" "LibreLane stopped before sign-off (see logs/librelane_$TAG.log)"; continue
   fi
   if ! signoff "$WORK/runs/$TAG"; then
     echo "   the sign-off timing of run $TAG failed (see runs/$TAG/signoff/sta.log)"
@@ -223,9 +223,9 @@ for U in $UTILS; do
 done
 
 # ---- the summary
-"$NEAT_PYTHON" - "$WORK" "$SESSION" "$CLK_NS" "$OPENLANE_ROOT" "$PDK_ROOT" "$PDK" <<'PY'
+"$NEAT_PYTHON" - "$WORK" "$SESSION" "$CLK_NS" "$LIBRELANE_ROOT" "$PDK_ROOT" "$PDK" <<'PY'
 import json, os, subprocess, sys
-work, session, clk, openlane_root, pdk_root, pdk = sys.argv[1:]
+work, session, clk, librelane_root, pdk_root, pdk = sys.argv[1:]
 attempts = [json.loads(line) for line in open(f"{work}/attempts.jsonl")]
 accepted = [a for a in attempts if a["status"] == "accepted"]
 summary = {"session": session, "clock_period_ns": float(clk), "status": "accepted" if accepted else "failed",
@@ -240,7 +240,7 @@ def describe(cmd):
         return subprocess.run(cmd, capture_output=True, text=True, timeout=30).stdout.strip() or None
     except Exception:
         return None
-summary["tools"] = {"openlane": describe(["git", "-C", openlane_root, "describe", "--tags", "--always"]),
+summary["tools"] = {"librelane": describe(["git", "-C", librelane_root, "describe", "--tags", "--always"]),
                     "pdk": f"{pdk_root}/{pdk}", "pdk_version": describe(["cat", f"{pdk_root}/{pdk}/SOURCES"])}
 json.dump(summary, open(f"{work}/harden.json", "w"), indent=1)
 PY
