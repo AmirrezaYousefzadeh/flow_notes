@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
-"""Decide from the metrics of an LibreLane run whether the hardened design is accepted (flow/harden.sh; RULES.md,
+"""Decide from the metrics of a LibreLane run whether the hardened design is accepted (flow/harden.sh; RULES.md,
 sections 3 and 5): routing DRC clean, setup and hold met at the typical corner, no power-grid violation, and at most
 CELL_CAP standard cells. Tap cells are not counted: their number grows with the core area, not with the design.
 
-The timing comes from --signoff, the result of flow/tools/signoff_sta.tcl on the renamed netlist and SPEF, in which
-every net has its parasitics; LibreLane's own sign-off loses those of the nets inside sub-modules, and its slacks are
-kept for information only. Without --signoff the LibreLane slacks are used (for runs of other flows).
+The timing comes from --signoff, the result of flow/tools/signoff_sta.tcl on the renamed netlist and SPEF that the
+simulation and the power analysis also read (with OpenLane 2, the flow's own sign-off lost the parasitics of the nets
+inside sub-modules); the flow's own slacks are kept for comparison. Without --signoff the flow's slacks are used.
 
-Usage: check_metrics.py <run dir>/final/metrics.json [--signoff signoff.json] [--corner nom_tt_025C_1v80]
-                        [--cell-cap 300000] [-o summary.json]
+With --synth-stat (the run's Yosys reports/stat.json), cells left unmapped by synthesis reject the run. LibreLane
+3.0.16's own check, which the configuration therefore disables, counts every cell type starting with `$`, including
+the kept sub-modules of parametrised modules (named `$paramod...`); those are modules of the design, not unmapped cells.
+
+Usage: check_metrics.py <run dir>/final/metrics.json [--signoff signoff.json] [--synth-stat stat.json]
+                        [--corner nom_tt_025C_1v80] [--cell-cap 300000] [-o summary.json]
 Prints a one-line summary and PASS or FAIL; exit status 0 on PASS.
 """
 import argparse
@@ -21,6 +25,7 @@ def main():
     ap.add_argument("--corner", default="nom_tt_025C_1v80")
     ap.add_argument("--cell-cap", type=int, default=300000)
     ap.add_argument("--signoff", default=None, help="signoff.json of flow/tools/signoff_sta.tcl")
+    ap.add_argument("--synth-stat", default=None, help="reports/stat.json of the run's Yosys synthesis")
     ap.add_argument("-o", "--out", default=None)
     a = ap.parse_args()
 
@@ -48,7 +53,13 @@ def main():
         summary["setup_ws_ns"], summary["hold_ws_ns"] = signoff["setup_ws_ns"], signoff["hold_ws_ns"]
         summary["timing"] = "flow/tools/signoff_sta.tcl (renamed netlist and SPEF)"
         summary["spef_unmatched"] = signoff["spef_unmatched"]
+    if a.synth_stat:
+        stat = json.load(open(a.synth_stat))
+        summary["unmapped_cells"] = sum(n for cell, n in stat["design"]["num_cells_by_type"].items()
+                                        if cell.startswith("$") and cell not in stat["modules"])
     reasons = []
+    if summary.get("unmapped_cells"):
+        reasons.append(f"{summary['unmapped_cells']} cells left unmapped by synthesis")
     if summary["drc_errors"] != 0:
         reasons.append(f"routing DRC errors: {summary['drc_errors']}")
     if summary["setup_ws_ns"] is None or summary["setup_ws_ns"] < 0:

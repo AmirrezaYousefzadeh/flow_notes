@@ -1,6 +1,6 @@
 # ASAP7 flow notes: synthesis, place and route with ORFS, gate-level simulation and power
 
-**Version 4.1, last updated 2026-10-24.** The full history is in "Version history" below.
+**Version 4.2, last updated 2026-10-24.** The full history is in "Version history" below.
 
 Read this before you synthesise, place and route or measure anything on ASAP7 (the predictive 7 nm library) on this
 machine. It is written for engineers and AI agents. It collects what was learned measuring several neural-network
@@ -39,6 +39,7 @@ and never modify a shared ORFS checkout.
 | 3.0 | 2026-10-24 | the notes are general: no references to individual projects. Reference tools in `flow_notes/tools/`; open questions instead of per-project open issues (13); broadcast announcements in `ANNOUNCEMENTS.md` |
 | 4.0 | 2026-10-24 | **new default versions** (section 1): ORFS `ef2cb37` with the LibreLane binaries, SRAM-Vt via `ASAP7_USE_VT=SRAM`, corrected RVT FF liberty, hold slack reported; the SRAM-Vt patch notes of 1, 6.3 updated |
 | 4.1 | 2026-10-25 | the queue's guide for agents is now `/media/amir/.jobq/AGENTS.md` (section 0) |
+| 4.2 | 2026-10-28 | from the inbox: `DETAILED_ROUTE_END_ITERATION` instead of `DETAILED_ROUTE_ARGS` (6.1); sanitiser fixed for the ICG rise delay and the time scale (8.1); ICGx2 model; glitch factor of a latch-memory core by function (8.3); fourth SPEF spelling for `legal_names.py` (9.4) |
 
 Contents:
 0. Ground rules on this machine
@@ -122,7 +123,7 @@ Maintained copies are in `/media/amir/flow_notes/tools/` (see its README). For A
 | tool | what it does | status |
 |---|---|---|
 | `write_sdf_sta.tcl` | SDF from OpenSTA (ORFS writes none) | verified |
-| `asap7_seq_icarus.v` | behavioural DFFHQNx1/2/3, ICGx1, DHLx1 (RVT and SRAM-Vt) for Icarus | verified bit-exact; lacks ICGx2, DLLx1 |
+| `asap7_seq_icarus.v` | behavioural DFFHQNx1/2/3, ICGx1/2, DHLx1 (RVT and SRAM-Vt) for Icarus | verified bit-exact; lacks DLLx1 |
 | `sdf_sanitize_for_icarus.py` | ps → ns rescale, empty triplets, COND unwrap | see 8.1 (ICG rise delay) |
 | `gen_phys_stubs.py` | empty modules for tap, fill, decap | verified |
 | `hold_sta.tcl` | own hold check at TT, SS, FF with SPEF | verified |
@@ -244,7 +245,7 @@ Settings that every ASAP7 config needs:
 | `CORE_UTILIZATION` | policy: 60 → 20 % in steps of 10 for small logic cores; 20 → 15 → 10 % for large latch cores | for one SRAM-Vt core, energy was flat within 1 % from 40 to 60 % and 9 % lower at 70 %; the policy does not bias the result |
 | `PLACE_DENSITY_LB_ADDON` | 0.10 | |
 | `TNS_END_PERCENT` | 100 | |
-| `DETAILED_ROUTE_ARGS` | `-droute_end_iter 40` to 64 | with a violation watchdog, as in sky130 notes 5.3 |
+| `DETAILED_ROUTE_END_ITERATION` | 40 to 64 | with a violation watchdog, as in sky130 notes 5.3. Leave `DETAILED_ROUTE_ARGS` unset: it replaces the default arguments, and with the LibreLane binaries `-bottom_routing_layer`/`-top_routing_layer` in it abort with `DRT-0509` (deprecated; the platform sets the layers itself) |
 | `NUM_CORES` | `$JOBQ_THREADS` | default is 24 (section 0) |
 | `CORNER` | set it explicitly | default BC = FF (3.3) |
 | SDC | no `set_propagated_clock` | ORFS adds it after CTS |
@@ -325,10 +326,10 @@ global routing, and never after detailed routing (still so upstream).
   models. Zero-delay runs work with the vendor models.
 - **Rescale the SDF.** Icarus up to v13_0 ignores `(TIMESCALE 1ps)` and reads 113 ps as 113 ns; a core stalled for
   7 h. `tools/sdf_sanitize_for_icarus.py` rescales to ns and fills empty triplets with 0.
-- **ICG rise delay may become 0.** In one sanitiser version, the zero-filled rise triplets of the unwrapped
-  conditional ICG paths came last and overrode the unconditional value: `CLK→GCLK` rise 0 instead of about 36 ps
-  (confirmed with a small Icarus run). Check the annotated ICG delays of your run; the effect on glitch counts was not
-  measured.
+- **ICG rise delay became 0** with earlier sanitiser versions: the zero-filled rise triplets of the unwrapped
+  conditional ICG paths came last and overrode the unconditional value, so every clock gate ran with 0 ps rise delay
+  (all 294 gates of one core). `tools/sdf_sanitize_for_icarus.py` now drops those repeats (588 lines in that core) and
+  rescales `(TIMESCALE 1ps)` to ns itself. Effect on that core's glitch factor: 1.300 → 1.309.
 - **Delays are rounded to 10 ps** (also raised upstream, asap7 issue #42). The models declare
   `` `timescale 1ns/10ps ``, so 22.7 ps becomes 20, 14 becomes 10, 4 becomes 0. ASAP7 gate delays are 5–45 ps, so this
   is coarse, and glitch factors measured this way carry the error. Fix: compile the models with a 1 ps precision (for
@@ -338,14 +339,19 @@ global routing, and never after detailed routing (still so upstream).
 - Compile a `` `timescale 1ns/1ps `` file first and add empty stubs for tap, fill and decap cells.
 - Write the net activities after the pin activities (sky130 notes 7.2): Icarus can leave a cell's output-port
   variable constant while its net toggles.
-- `asap7_seq_icarus.v` covers DFFHQNx1/2/3, ICGx1 and DHLx1 only; add ICGx2 and DLLx1 if the design uses them.
+- `asap7_seq_icarus.v` covers DFFHQNx1/2/3, ICGx1/2 and DHLx1; add DLLx1 if the design uses it (synthesis does use
+  ICGx2 in larger cores).
 
 **8.2 Verilator, zero delay:** functional models generated from the liberty (`tools/liberty2verilog.py`), stubs for
 physical cells. A 1.58 M-instance routed core built in 20 min (about 6–8 GB) and ran in 6 min. Liberty-generated
 models hung in Icarus, so this route is for Verilator only.
 
 **8.3 Glitch factor** (annotated over zero-delay energy): 1.17–1.28 on ASAP7 for small decoder cores, against
-1.18–1.22 on sky130 for the same cores. Earlier values of 1.07–1.11 were wrong (9.2). Both carry the 10 ps rounding.
+1.18–1.22 on sky130 for the same cores (these carry the 10 ps rounding). Earlier values of 1.07–1.11 were wrong (9.2).
+A 72 000-instance time-multiplexed SNN core with a latch memory (SRAM-Vt, TT, 1 ps model precision, correct ICG
+delays, zero SDF errors, bit-exact): 1.31 overall; by function clock tree 1.00, repair buffers 1.00, memory 1.09,
+control 1.12, output 1.42, neurons 1.69, synapses 1.94. Glitches concentrate in arithmetic; a factor measured on one
+design transfers to another only if the arithmetic share is similar.
 
 ## 9. Power with OpenSTA
 
@@ -369,7 +375,11 @@ Decap-free fill makes no power difference on ASAP7.
 **9.4 Parasitics and escaped names.** With `keep_hierarchy`, the netlist has `\u_neu/_10240_` and the SPEF the bare
 `u_neu/_10240_` under `*DIVIDER /`. OpenSTA dropped 4.87 million SPEF entries (863 k of 2.04 M nets) in one design,
 which invalidated its power breakdown. Fix: `tools/legal_names.py` (sky130 notes 5.4), then expect zero
-`spef ... not found` warnings. Flat cores match fully.
+`spef ... not found` warnings. Flat cores match fully. ORFS keeps Yosys' register names on the cells
+(`\\u_wmem/lat[39]$_DLATCH_P_`), and the SPEF writes them with escaped brackets but a bare `$`
+(`u_wmem/lat\\[39\\]$_DLATCH_P_`), a fourth spelling: `legal_names.py` handles it since 2026-10-25 (earlier versions
+missed 187 893 entries of one core). OpenSTA 2.7 reads escaped names itself (sky130 notes 5.4), so with the default
+tools the renaming matters for Icarus.
 
 **9.5 Leakage depends on cell state.** ASAP7 per-state leakage differs by large factors, unlike sky130, GF180 or
 NanGate45. In a 20 k-cell RVT core: idle after reset 3.30 µW, decode window 2.35 µW, real-time run 2.64 µW; in SRAM-Vt
@@ -439,7 +449,6 @@ General questions that no measurement here has answered yet. Report answers thro
 | question | section |
 |---|---|
 | Do the vendor ASAP7 SEQ models work in current Icarus once the notifier is initialised and the SDF rescaled? | 8.1 |
-| How much do glitch factors change with 1 ps model precision and correct ICG rise delays? | 8.1, 8.3 |
 | Does a smaller CTS buffer list reduce the clock-tree power of latch-row cores? | 6.4 |
 | Which `ROUTING_LAYER_ADJUSTMENT` lets large latch cores route at 15–20 %? | 6.5 |
 | Does `GPL_TIMING_DRIVEN=0` avoid the "stack smashing" crash? | 6.5 |

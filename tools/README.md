@@ -5,16 +5,17 @@ Maintained copies of the tools the flow notes refer to. Copy what you need into 
 
 | tool | what it does | notes section |
 |---|---|---|
-| `legal_names.py` | renames every escaped identifier to a plain one, consistently in netlist, SDF and SPEF | sky130 5.4 |
+| `harden_ladder.sh` | hardens any LibreLane configuration under the hardening policy: utilisations dense to sparse, routing watchdog, process-group stop, acceptance from the run's metrics (plus an optional own sign-off), every attempt logged in `ladder.json` | sky130 5.3 |
+| `legal_names.py` | renames every escaped identifier to a plain one, consistently in netlist, SDF and SPEF (all four SPEF spellings, including ORFS' bare `$`) | sky130 5.4, ASAP7 9.4 |
 | `signoff_sta.tcl` | OpenSTA sign-off with every net's parasitics and the run's SDC variables | sky130 6.2 |
 | `hold_sta.tcl` | own hold check at several corners with SPEF (ORFS reports no hold slack in older versions) | ASAP7 7.2 |
-| `check_metrics.py` | accepts or rejects an OpenLane run: routing DRC 0, setup and hold met, power grid clean, no unmatched SPEF entries, cell cap | sky130 5.2 |
+| `check_metrics.py` | accepts or rejects a run: routing DRC 0, setup and hold met, power grid clean, no unmatched SPEF entries, cell cap; `--synth-stat` counts truly unmapped cells | sky130 5.2, 1 |
 | `macro_config.py` | macro instances and an absolute floorplan with SRAM22 macros in a column | sky130 5.5 |
-| `sdf_sanitize_for_icarus.py` | makes an OpenSTA/OpenROAD SDF digestible for Icarus (triplets, COND, INTERCONNECT, bus bits, ps → ns) | sky130 7.1 |
+| `sdf_sanitize_for_icarus.py` | makes an OpenSTA/OpenROAD SDF digestible for Icarus (triplets, COND, INTERCONNECT, bus bits, zero-filled conditional repeats, ps → ns) | sky130 7.1, ASAP7 8.1 |
 | `write_sdf_sta.tcl` | writes an SDF with OpenSTA (ORFS writes none) | ASAP7 8.1 |
 | `sky130_timing_icarus_fixes.v` | include guards and a no-op `lpflow_bleeder_1` for compiling the sky130 timing models | sky130 7.1 |
 | `gen_phys_stubs.py` | empty modules for physical-only cells missing from the model file | sky130 7.1 |
-| `asap7_seq_icarus.v` | behavioural ASAP7 DFFHQNx1/2/3, ICGx1, DHLx1 (RVT and SRAM-Vt) for Icarus | ASAP7 8.1 |
+| `asap7_seq_icarus.v` | behavioural ASAP7 DFFHQNx1/2/3, ICGx1/2, DHLx1 (RVT and SRAM-Vt) for Icarus | ASAP7 8.1 |
 | `liberty2verilog.py` | functional Verilog models from a liberty, for Verilator | sky130 7.4, ASAP7 8.2 |
 | `icarus_sdf_fast.patch` | faster `$sdf_annotate` for Icarus on large netlists | sky130 7.4 |
 | `vcd_toggles.c` | per-signal transition counts and high time from a VCD stream (OpenSTA's counting rules) | sky130 7.2 |

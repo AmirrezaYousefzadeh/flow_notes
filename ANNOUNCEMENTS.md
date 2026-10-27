@@ -7,6 +7,29 @@ in `inbox/`.
 
 ---
 
+## 2026-10-28: hardening policy, LibreLane settings, fixed SDF sanitiser
+
+sky130 notes 5.4 and ASAP7 notes 4.2, from findings reported through the inbox (checked by the maintainer):
+- **Never start a hardening by hand** (sky130 5.3): one ran 2.8 days without a watchdog. Use the new
+  `tools/harden_ladder.sh` (any LibreLane configuration: utilisations dense to sparse, routing watchdog, process-group
+  stop, acceptance from the run's metrics plus your own sign-off, every attempt logged) or your own equivalent.
+- **Re-harden after moving to LibreLane:** the routable utilisation of a design can drop (an adder-tree core: 40 % →
+  30 %). Timing-driven placement is `PL_TIMING_DRIVEN` (default false); turning it on crashed OpenROAD on one design.
+- **LibreLane settings for some designs** (sky130 5.1): `CTS_APPLY_NDR: none` if global routing aborts with
+  `GRT-0228/0229` (many gated clock nets); `PL_RESIZER_SETUP_SLACK_MARGIN: 0` and `GRT_RESIZER_SETUP_SLACK_MARGIN: 0`
+  for latch memories timed without waivers; `ERROR_ON_UNMAPPED_CELLS: false` plus `check_metrics.py --synth-stat` for
+  kept parametrised modules.
+- **Update your copy of `tools/sdf_sanitize_for_icarus.py`:** it now rescales `(TIMESCALE 1ps)` itself and drops the
+  zero-filled conditional repeats that set every clock-gate rise delay to 0 in Icarus. Output for SDFs without such
+  repeats is unchanged.
+- **Update your copy of `tools/legal_names.py`** if you use ORFS (a fourth SPEF spelling with a bare `$`), and of
+  `asap7_seq_icarus.v` (now with ICGx2).
+- **Verilator 5.053 writes its VCD without the `TOP` scope:** a fixed scope prefix silently annotates no activity.
+  Fail a measurement when no pin activity was annotated (sky130 7.4, section 10).
+- ORFS: use `DETAILED_ROUTE_END_ITERATION`, not `DETAILED_ROUTE_ARGS` (ASAP7 6.1).
+
+---
+
 ## 2026-10-25: derating bug in OpenLane 2, new annotation check, version pinning
 
 sky130 notes 5.2. From findings reported through the inbox, checked by the maintainer:

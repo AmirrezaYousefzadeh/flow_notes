@@ -11,8 +11,13 @@ rest:
   * IOPATHs on bus bits (dout[0] of a macro) are dropped, since Icarus does not parse them; the macro's own simulation
     model carries its output delay;
   * CELL entries left without any IOPATH are dropped;
-  * empty delay triplets "()" become zeros.
-Instance names must be plain identifiers (flow/tools/legal_names.py runs first) and the time scale 1 ns.
+  * empty delay triplets "()" become zeros;
+  * within a CELL, a repeated IOPATH of an input/output pair already seen is dropped when one of its triplets is all
+    zero: the unwrapped conditional paths of clock gates (and xor/mux cells) carry zero-filled rise triplets, and Icarus
+    applies the last match, which would set the clock-gate rise delay to 0;
+  * a time scale other than 1 ns (OpenSTA writes "(TIMESCALE 1ps)" for ASAP7) is rescaled to 1 ns, because Icarus up to
+    v13 ignores the header and the testbench expects ns.
+Instance names must be plain identifiers (legal_names.py runs first).
 """
 import argparse
 import re
@@ -34,12 +39,48 @@ def skip_balanced(lines, start):
     return len(lines)
 
 
+UNIT_NS = {"fs": 1e-6, "ps": 1e-3, "ns": 1.0, "us": 1e3}
+TRIPLET = re.compile(r"\(([-+0-9.eE]*)(?::([-+0-9.eE]*):([-+0-9.eE]*))?\)")
+
+
+def scale_iopath(line, factor):
+    """Multiply every delay value of an IOPATH line by factor (the port names are left alone)."""
+    m = re.match(r"(\s*\(IOPATH\s+\S+\s+\S+\s+)(.*)$", line, flags=re.S)
+    if not m:
+        return line
+    def one(v):
+        return v if v == "" else f"{float(v) * factor:.6f}"
+    return m.group(1) + TRIPLET.sub(lambda t: "(" + ":".join(one(v) for v in t.groups() if v is not None) + ")"
+                                    if t.group(2) is not None else "(" + one(t.group(1)) + ")", m.group(2))
+
+
+def dedupe_zero_repeats(cell, stats):
+    """Drop later IOPATHs of an already seen input/output pair whose delays are all zero."""
+    seen, out = set(), []
+    for line in cell.splitlines(keepends=True):
+        m = re.match(r"\s*\(IOPATH\s+(\S+)\s+(\S+)\s+(.*)$", line)
+        if m:
+            key = (m.group(1), m.group(2))
+            triplets = [[v for v in t if v != ""] for t in TRIPLET.findall(m.group(3))]
+            if key in seen and any(t and all(float(v) == 0.0 for v in t) for t in triplets):
+                stats["dropped_zero_repeats"] += 1
+                continue
+            seen.add(key)
+        out.append(line)
+    return "".join(out)
+
+
 def sanitize(text):
     stats = dict.fromkeys(("dropped_interconnect", "dropped_timingcheck", "unwrapped_cond", "dropped_bus_iopath",
-                           "dropped_empty_cells", "filled_empty_triplets"), 0)
-    timescale = re.search(r"\(TIMESCALE\s+([^)]*)\)", text)
-    if timescale and timescale.group(1).replace(" ", "") != "1ns":
-        sys.exit(f"sdf_sanitize: time scale {timescale.group(1)}; the testbench expects 1ns")
+                           "dropped_empty_cells", "filled_empty_triplets", "dropped_zero_repeats",
+                           "rescaled_to_ns"), 0)
+    factor = 1.0
+    timescale = re.search(r"\(TIMESCALE\s+([0-9.]*)\s*(fs|ps|ns|us)\s*\)", text)
+    if timescale:
+        factor = float(timescale.group(1) or 1) * UNIT_NS[timescale.group(2)]
+        if factor != 1.0:
+            text = text.replace(timescale.group(0), "(TIMESCALE 1ns)", 1)
+            stats["rescaled_to_ns"] = 1
 
     lines, out, i = text.splitlines(keepends=True), [], 0
     while i < len(lines):
@@ -86,12 +127,15 @@ def sanitize(text):
     kept = []
     for cell in cells:
         if "(IOPATH" in cell:
-            kept.append(cell)
+            cell = re.sub(r"\(IOPATH ([^\n]*?) \(\) ", lambda m: f"(IOPATH {m.group(1)} (0.000000:0.000000:0.000000) ", cell)
+            kept.append(dedupe_zero_repeats(cell, stats))
         elif cell.strip():
             stats["dropped_empty_cells"] += 1
+    stats["filled_empty_triplets"] = sum(len(re.findall(r"\(IOPATH [^\n]*? \(\) ", c)) for c in cells)
     body = head + "".join(kept).rstrip() + "\n)\n"
-    body, stats["filled_empty_triplets"] = re.subn(r"\(IOPATH ([^\n]*?) \(\) ",
-                                                   lambda m: f"(IOPATH {m.group(1)} (0.000000:0.000000:0.000000) ", body)
+    if factor != 1.0:
+        body = "".join(scale_iopath(l, factor) if l.lstrip().startswith("(IOPATH") else l
+                       for l in body.splitlines(keepends=True))
     return body, stats
 
 

@@ -91,3 +91,25 @@ module DHLx1_ASAP7_75t_SRAM (Q, D, CLK);
     (D => Q) = (0, 0);
   endspecify
 endmodule
+
+module ICGx2_ASAP7_75t_R (GCLK, ENA, SE, CLK);
+  output GCLK; input ENA, SE, CLK; reg en_l;
+  always @(CLK or ENA or SE) if (!CLK) en_l = ENA | SE;
+  assign GCLK = CLK & en_l;
+  specify
+    (CLK => GCLK) = (0, 0);
+    if (~ENA & ~SE) (CLK => GCLK) = (0, 0);
+    if (ENA | (~ENA & SE)) (CLK => GCLK) = (0, 0);
+  endspecify
+endmodule
+
+module ICGx2_ASAP7_75t_SRAM (GCLK, ENA, SE, CLK);
+  output GCLK; input ENA, SE, CLK; reg en_l;
+  always @(CLK or ENA or SE) if (!CLK) en_l = ENA | SE;
+  assign GCLK = CLK & en_l;
+  specify
+    (CLK => GCLK) = (0, 0);
+    if (~ENA & ~SE) (CLK => GCLK) = (0, 0);
+    if (ENA | (~ENA & SE)) (CLK => GCLK) = (0, 0);
+  endspecify
+endmodule

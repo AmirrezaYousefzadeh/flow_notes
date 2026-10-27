@@ -24,9 +24,11 @@ TOOL_NAME = re.compile(r"(?:[A-Za-z0-9_$/]|\\.)+")  # an SDF/SPEF name, with bac
 
 def tool_forms(name):
     """The SDF/SPEF spellings of an escaped identifier: every special character preceded by a backslash, and the same
-    with the slash left bare (OpenROAD's SPEF writes the nets inside a module that way)."""
+    with the slash left bare (OpenROAD's SPEF writes the nets inside a module that way); `$` escaped or bare (ORFS
+    names Yosys' `\\u_wmem/lat[39]$_DLATCH_P_` instances as `u_wmem/lat\\[39\\]$_DLATCH_P_` in the SPEF)."""
     escaped = re.sub(r"([^A-Za-z0-9_$])", r"\\\1", name)
-    return escaped, escaped.replace("\\/", "/")
+    forms = (escaped, escaped.replace("\\/", "/"))
+    return forms + tuple(f.replace("$", "\\$") for f in forms)
 
 
 def main():
