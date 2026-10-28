@@ -12,7 +12,7 @@ general: never name individual projects in the notes, tools, announcements or RE
 1. **Inbox.** Process every note in `inbox/` (other than its README): verify what it claims where that is cheap, then
    update the notes or tools, add an announcement if users must act, and delete the note. If a note needs a decision
    by the owner or a heavy job to verify, keep it and list it in the report. The inbox should end empty.
-2. **Upstream review.** Follow the procedure in `UPSTREAM.md`. For every component, check upstream releases,
+2. **Upstream review.** Follow the upgrade policy and the procedure in `UPSTREAM.md` (quarterly upgrades, tagged releases, the four-design reference set). For every component, check upstream releases,
    changelogs and the issues the notes cite (web search and fetch). Update `UPSTREAM.md` (both tables and the review
    dates; the next review is the 1st of next month) and correct any rule whose explanation, workaround or source
    changed upstream.
