@@ -7,6 +7,15 @@ in `inbox/`.
 
 ---
 
+## 2026-10-30 (evening): exclude the delay cells from LibreLane's buffering
+
+sky130 notes 6.2, owner's decision: add `EXTRA_EXCLUDED_CELLS: ["sky130_fd_sc_hd__clkdlybuf4s*"]` to every LibreLane
+configuration (5.1). OpenROAD `dcf3613` otherwise uses the slow delay cell `clkdlybuf4s25_1` as an ordinary buffer
+(1 384 of them in one core). Write the list in the configuration file, not with `--override-config`. A project in the
+middle of a comparison keeps its settings for that comparison and says so.
+
+---
+
 ## 2026-10-30 (later): no port buffers or port diodes in a measurement; why LibreLane cells stay large
 
 sky130 notes 6.1:

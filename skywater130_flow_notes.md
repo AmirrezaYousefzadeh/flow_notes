@@ -1,6 +1,6 @@
 # SkyWater 130 nm flow notes: synthesis, hardening, gate-level simulation and power
 
-**Version 6.1, last updated 2026-10-30.** The full history is in "Version history" at the end.
+**Version 6.2, last updated 2026-10-30.** The full history is in "Version history" at the end.
 
 Read this before you synthesise, harden or measure anything on sky130 on this machine. It is written for engineers
 and AI agents. Everything here was learned the hard way, in several research designs measured on this machine:
@@ -188,14 +188,14 @@ path: a broken link to a liberty file makes a macro silently disappear from the 
     4 636 (1 384 of them `clkdlybuf4s25_1` on internal nets), glitch factor 1.30 → 1.41.
   - Never mix versions within one set of compared numbers, not even approximately; re-measure the baseline with the
     new versions.
-  - Possible remedies, not yet a rule (being measured on real cores): (B) `EXTRA_EXCLUDED_CELLS:
-    ["sky130_fd_sc_hd__clkdlybuf4s*"]` keeps the delay cells out of synthesis and repair (the workaround given
-    upstream; hold repair keeps `dlygate*`); (A) a `SYNTH_EXCLUDED_CELL_FILE` without the drive-1 logic cells (the
+  - Remedies: (B) `EXTRA_EXCLUDED_CELLS: ["sky130_fd_sc_hd__clkdlybuf4s*"]` keeps the delay cells out of synthesis
+    and repair (the workaround given upstream; hold repair keeps `dlygate*`): **a rule since 2026-10-30** (5.1). (A),
+    not yet a rule, being measured on real cores: a `SYNTH_EXCLUDED_CELL_FILE` without the drive-1 logic cells (the
     PDK list minus its `_1` entries of the `a*`, `o*`, `and`, `or`, `nand`, `nor`, `xor2`, `xnor2`, `inv` and `df*`
     cells) lets Yosys map to drive 1 and the repair size up only where needed. On LibreLane's 289-cell `spm` example
     (all runs DRC-clean and timing-clean): B −2 % cell area; A −9 % cell area and −9 % estimated power, but twice the
     hold delay cells (33 → 63); A and B −12 % area. Set B with a list in the configuration file, not with
-    `--override-config` (the quotes reach Tcl and stop the flow). Until the notes recommend one, harden every compared
+    `--override-config` (the quotes reach Tcl and stop the flow). Until the notes decide on A, harden every compared
     design with the same settings and state them.
 - **The routable utilisation can drop.** A flat 28 000-cell adder-tree core that routed at 40 % with OpenLane 2
   (global-routing overflow 10 506, detailed routing converged in 14 iterations) had 3.3× the overflow with LibreLane
@@ -284,6 +284,7 @@ flow's template (`tools/reference_flow/config.template.yaml`) is an example, wit
 | hold slack margins | the defaults (0.1 ns at placement, 0.05 ns at global routing) for a measurement-only project | Hold must be met at every sign-off corner with full parasitics (6.2); a margin above that is silicon insurance, not correctness. A 0.5 ns overfix cost about 0.6 µW (8 %) in a 7–9 µW design. With a small margin, the final hold check may fail and need a re-hardening; that is the trade-off. Choose and document the margin. |
 | `*_HOLD_MAX_BUFFER_PCT` | 80 (default 50) | Hold buffers are numerous: 15 % of the cells in one design. LibreLane reports them as `design__instance__count__hold_buffer`. |
 | `DESIGN_REPAIR_BUFFER_INPUT_PORTS: false`, `DESIGN_REPAIR_BUFFER_OUTPUT_PORTS: false` | false for a measurement (defaults true); true for a tapeout (section 12) | One buffer per port (in LibreLane 3.0.16 the delay cell `clkdlybuf4s25_1`, 1.1). They give a stand-alone chip defined loads and drives at its pins; a block measured as a part of an SoC needs none. Their power follows the ports' activity: 1 % of the dynamic power of a 700-cell reference design with 122 ports. Without output buffers, the block's own output drivers carry the SDC's output load (`OUTPUT_CAP_LOAD`, 33.4 fF by default, 8.8): set a load that fits the block's place in the SoC, and state it. |
+| `EXTRA_EXCLUDED_CELLS: ["sky130_fd_sc_hd__clkdlybuf4s*"]` | (default none) | OpenROAD `dcf3613` picks the delay cells `clkdlybuf4s*` as ordinary buffers in design repair (1.1; OpenROAD #10622). Excluding them cut cell area 2 % on an example with nothing worse; hold repair keeps `dlygate*`. Write the list in the configuration file: through `--override-config` the quotes reach Tcl and stop the flow. Remove it when upstream fixes the buffer choice. |
 | `GRT_ALLOW_CONGESTION` | true (default false) | A congested design reaches detailed routing, where the watchdog (5.3) judges it. Measurement only; false for tapeout. |
 | `CTS_APPLY_NDR` | `none` for designs with many gated clock nets (LibreLane default `half`) | With the default 2×-spacing rule on the upper clock nets, LibreLane 3.0.16's global router aborted with `GRT-0228/0229` ("edge usage exceeds the maximum allowed") on a core with 3 743 gated clock nets, at 50, 30 and 20 % utilisation; `GRT_ALLOW_CONGESTION` does not cover it (OpenROAD issue #11653; fixed by PR #11754, not in our version). OpenLane 2 applied no clock NDR, so `none` also keeps results comparable. |
 | `PL_RESIZER_SETUP_SLACK_MARGIN`, `GRT_RESIZER_SETUP_SLACK_MARGIN` | 0 for latch memories timed without waivers (defaults 0.05 and 0.025 ns) | Latches borrow time and report a setup slack of exactly 0; with a positive margin every weight latch is a "violation" that no move can improve, and `repair_timing` looped 80 000 times in an hour without changing anything. Sign-off still requires slack ≥ 0. |
@@ -774,3 +775,4 @@ When tapeout work verifies any of this, report it through the inbox; it will get
 | 5.7 | 2026-10-29 | from the inbox: `macro_config.py` writes LibreLane's `PDN_*` names (5.5); the larger cell count with LibreLane comes from OpenROAD's design repair (delay cells as port buffers, almost no downsizing) and post-routing diodes, not from Yosys (1) |
 | 6.0 | 2026-10-30 | full review against the installed sources: start-here and silent-error table; history moved to the end; LibreLane migration facts gathered in 1.1, details moved to their sections (unmapped-cell check to 4, OpenSTA 2.7 to 8.1); section 5 is LibreLane. Corrected: sign-off corner defaults and what each tool checks (5.2, 5.3, 6.2); `PNR_CORNERS` alone does not keep the resizer off a low-voltage corner (5.7); the slew limit violated at 1.28 V (5.7); who sets the derating integer (6.1); `report_activity_annotation` in old OpenSTA (8.1); root-clock share, tools and bias (8.2); other sky130 libraries exist only in the old PDK (9.4); the reference flow is not runnable as copied (2). New: port buffers are optional for small IP blocks inside an SoC (5.1, owner's decision); `STA_THREADS` and `-j` (0); one propagated clock with the simulated period before the activities (8.1); `check_annotation.py` fails on zero annotated pins (8.1); macro timing liberties per corner (9.1); zero-delay defines (7.1); seven checklist rows (10) |
 | 6.1 | 2026-10-30 | owner's decision: no port buffers and no port diodes for a measurement, both on for a tapeout (5.1, 12). From the inbox: why LibreLane keeps drive-2 cells (the PDK's synthesis list plus OpenROAD `dcf3613` no longer sizing down) and buffers with delay cells, upstream issues, candidate remedies with first numbers (1.1); +20 % / +40 % energy on a logic-dominated core (1.1); drive-2 leakage at 1.28 V (5.7) |
+| 6.2 | 2026-10-30 | owner's decision: exclude the delay cells `clkdlybuf4s*` from synthesis and repair (5.1, 1.1) |
