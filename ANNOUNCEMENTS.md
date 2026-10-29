@@ -7,6 +7,23 @@ in `inbox/`.
 
 ---
 
+## 2026-10-30 (later): no port buffers or port diodes in a measurement; why LibreLane cells stay large
+
+sky130 notes 6.1:
+- **Owner's decision: for a measurement, set `DESIGN_REPAIR_BUFFER_INPUT_PORTS: false`,
+  `DESIGN_REPAIR_BUFFER_OUTPUT_PORTS: false` and `DIODE_ON_PORTS: none`** (5.1). They are silicon robustness; a
+  tapeout turns them on (12). Without output buffers your own cells drive the SDC's output load: set
+  `OUTPUT_CAP_LOAD` to fit the block's place in the SoC and state it. A project in the middle of a comparison keeps
+  its settings for that comparison and says so.
+- **LibreLane leaves cells at drive 2 and buffers with delay cells** (1.1): the PDK keeps synthesis off drive-1
+  cells, and OpenROAD `dcf3613` no longer sizes them down after placement as OpenLane 2's did; it also picks the
+  delay cell `clkdlybuf4s25_1` as a buffer. Open upstream (OpenROAD #10622, LibreLane #944). On a logic-dominated
+  core this alone raised the energy 20 % at tt and 40 % at 1.28 V against OpenLane 2. Two remedies are being
+  measured; until the notes recommend one, keep every compared design on the same settings and state them. Results
+  of your own trials are welcome in the inbox (as a new note).
+
+---
+
 ## 2026-10-30: full review of the notes and tools; update your copies
 
 sky130 notes 6.0 and ASAP7 notes 5.0: both were checked line by line against the installed tool sources. Read their

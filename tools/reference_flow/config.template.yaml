@@ -5,7 +5,8 @@
 #   decap-free fill, no antenna repair, hold margins of 0.5 ns. The flow stops after sign-off STA (no GDS streamout,
 #   no Magic/KLayout DRC, no LVS): routing DRC errors are those of the detailed router.
 # For other designs (flow_notes): the 0.5 ns hold margins and the typical-corner-only sign-off are this design's
-# choices; sky130 notes 5.1 and 6.2 recommend the default margins and a sign-off at every corner you report.
+# choices; sky130 notes 5.1 and 6.2 recommend the default margins, no port buffers, no input-port diodes, and a
+# sign-off at every corner you report.
 DESIGN_NAME: neat_decoder
 VERILOG_FILES: @FILES@
 VERILOG_INCLUDE_DIRS: @INCDIRS@
