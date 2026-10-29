@@ -36,11 +36,14 @@ stop_group() {     # <pgid>: TERM to the whole process group, KILL after a minut
 trap '[[ -n "$ACTIVE" ]] && stop_group "$ACTIVE"' INT TERM EXIT
 
 watchdog() {       # <run dir>: stop the active attempt when detailed routing cannot converge; prints the reason
-  local run="$1" seen=0 last_change start now log reason
-  last_change=$(date +%s); start=$last_change
+  local run="$1" seen=0 last_change start now log reason prev gap
+  last_change=$(date +%s); start=$last_change; prev=$last_change
   while kill -0 "$ACTIVE" 2> /dev/null; do
     sleep 60
     now=$(date +%s); reason=""
+    # time spent frozen by jobq's memory guard (the watchdog is frozen too) is neither idle nor run time
+    gap=$(( now - prev - 60 )); prev=$now
+    (( gap > 180 )) && { last_change=$(( last_change + gap )); start=$(( start + gap )); }
     log=$(ls -t "$run"/*openroad-detailedrouting*/*.log 2> /dev/null | head -n 1 || true)
     if [[ -n "$log" ]]; then
       local v=() n

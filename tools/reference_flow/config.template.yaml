@@ -22,6 +22,7 @@ DECAP_CELLS: []                      # decap-free fill: the measured leakage is 
 RUN_HEURISTIC_DIODE_INSERTION: false # heuristic diodes break legalisation at high utilisation; diodes on input ports only
 DIODE_ON_PORTS: in
 RUN_ANTENNA_REPAIR: false
+DRT_ANTENNA_REPAIR_ITERS: 0      # LibreLane: no antenna repair loop after detailed routing either
 GRT_ALLOW_CONGESTION: true           # let a congested design reach detailed routing; the watchdog of harden.sh stops it
 PL_RESIZER_HOLD_SLACK_MARGIN: 0.5    # hold margins (ns): robust gate-level timing, at the price of hold buffers
 GRT_RESIZER_HOLD_SLACK_MARGIN: 0.5

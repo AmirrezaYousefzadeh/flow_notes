@@ -5,7 +5,7 @@ Maintained copies of the tools the flow notes refer to. Copy what you need into 
 
 | tool | what it does | notes section |
 |---|---|---|
-| `harden_ladder.sh` | hardens any LibreLane configuration under the hardening policy: utilisations dense to sparse, routing watchdog, process-group stop, acceptance from the run's metrics (plus an optional own sign-off), every attempt logged in `ladder.json` | sky130 5.3 |
+| `harden_ladder.sh` | hardens any LibreLane configuration under the hardening policy: utilisations dense to sparse, routing watchdog (not counting time frozen by the queue), process-group stop, acceptance from the run's metrics (plus an optional own sign-off), every attempt logged in `ladder.json` | sky130 5.3 |
 | `legal_names.py` | renames every escaped identifier to a plain one, consistently in netlist, SDF and SPEF (all four SPEF spellings, including ORFS' bare `$`) | sky130 5.4, ASAP7 9.4 |
 | `signoff_sta.tcl` | OpenSTA sign-off with every net's parasitics and the run's SDC variables | sky130 6.2 |
 | `hold_sta.tcl` | own hold check at several corners with SPEF (ORFS reports no hold slack in older versions) | ASAP7 7.2 |

@@ -109,12 +109,15 @@ fi
 
 watchdog() {       # <run dir>: stop the active run when its detailed routing cannot converge; prints the reason
   # (runs in a command substitution: it may signal the run's process group, but the caller waits for the run)
-  local run="$1" seen=0 last_change start
-  last_change=$(date +%s); start=$last_change
+  local run="$1" seen=0 last_change start prev gap
+  last_change=$(date +%s); start=$last_change; prev=$last_change
   while kill -0 "$ACTIVE" 2> /dev/null; do
     sleep 60
     local now log reason=""
     now=$(date +%s)
+    # time spent frozen by jobq's memory guard (the watchdog is frozen too) is neither idle nor run time
+    gap=$(( now - prev - 60 )); prev=$now
+    (( gap > 180 )) && { last_change=$(( last_change + gap )); start=$(( start + gap )); }
     log=$(ls -t "$run"/*openroad-detailedrouting*/*.log 2> /dev/null | head -n 1 || true)
     if [[ -n "$log" ]]; then
       local v=() n
@@ -210,7 +213,9 @@ for U in $UTILS; do
     record "$U" failed "$MIN" "sign-off timing failed (see runs/$TAG/signoff/sta.log)"; continue
   fi
   if "$NEAT_PYTHON" "$F/tools/check_metrics.py" "$METRICS" --cell-cap "${CELL_CAP:-300000}" \
-       --signoff "$WORK/runs/$TAG/signoff/signoff.json" -o "$WORK/runs/$TAG/check.json" | sed 's/^/   /'; then
+       --signoff "$WORK/runs/$TAG/signoff/signoff.json" \
+       --synth-stat "$(ls "$WORK/runs/$TAG"/*-yosys-synthesis/reports/stat.json | head -n 1)" \
+       -o "$WORK/runs/$TAG/check.json" | sed 's/^/   /'; then
     ln -sfn "$TAG" "$WORK/runs/accepted"
     record "$U" accepted "$MIN" ""
     echo "   accepted after $MIN min: $WORK/runs/accepted -> $TAG"
