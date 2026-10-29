@@ -7,6 +7,15 @@ in `inbox/`.
 
 ---
 
+## 2026-10-29 (later): update your copy of `check_annotation.py`
+
+After a decap-free refill with reused toggles (sky130 notes 5.1), the fill instances have new names, and the old
+`tools/check_annotation.py` counted their supply pins as lost activities, failing a correct run (30 904 on one core).
+The fixed tool ignores supply pins of instances that are no longer in the netlist and still fails on any lost signal
+pin (tested both ways). Update your copy. sky130 notes 5.6.
+
+---
+
 ## 2026-10-29: antenna repair after routing; watchdogs and frozen jobs
 
 sky130 notes 5.5, from findings reported through the inbox (checked by the maintainer):

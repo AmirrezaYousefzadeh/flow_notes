@@ -1,6 +1,6 @@
 # SkyWater 130 nm flow notes: synthesis, hardening, gate-level simulation and power
 
-**Version 5.5, last updated 2026-10-29.** The full history is in "Version history" below.
+**Version 5.6, last updated 2026-10-29.** The full history is in "Version history" below.
 
 Read this before you synthesise, harden or measure anything on sky130 on this machine. It is written for engineers
 and AI agents. Everything here was learned the hard way, in several research designs measured on this machine:
@@ -53,6 +53,7 @@ yourself.
 | 5.3 | 2026-10-25 | the queue's guide for agents is now `/media/amir/.jobq/AGENTS.md` (section 0) |
 | 5.4 | 2026-10-28 | from the inbox: hardening policy and `tools/harden_ladder.sh` (5.3); routability can drop with LibreLane, `PL_TIMING_DRIVEN` (1, 5.7); unmapped-cell check with kept parametrised modules (1); `CTS_APPLY_NDR: none` and zero setup margins for latch memories (5.1); exception names in LibreLane and ORFS (6.1); sanitiser drops zero-filled conditional repeats (7.1); Verilator VCD scope and an annotated-pin check (7.4, 10) |
 | 5.5 | 2026-10-29 | from the inbox: LibreLane's antenna repair after detailed routing (`DRT_ANTENNA_REPAIR_ITERS: 0`, 5.1); watchdogs must not count time frozen by the queue (5.3); section 0 follows the queue's current rules (`--time`, freezing, CPU set) |
+| 5.6 | 2026-10-29 | from the inbox: `check_annotation.py` no longer fails a decap-free refill with reused toggles (supply pins of renamed fill), 5.1, 8.1 |
 
 Contents:
 0. Ground rules on this machine
@@ -229,7 +230,7 @@ or KLayout DRC, no LVS and no antenna repair. A layout for tapeout needs the opp
 
 | setting | value | why |
 |---|---|---|
-| `DECAP_CELL: []` | decap-free fill | Decap cells leak: 0.26 µW of a 1.87 µW measurement in one design, 53–81 % of the leakage in others, and 2.1–3.8 µW of 2.9–4.9 µW in register-file and latch cores (energy per bin 27.3 → 12.1 nJ and 21.9 → 7.8 nJ without them). Report the logic's leakage, not the fill's (our measurements; no published source compares them). To fix an existing run, rerun from `OpenROAD.FillInsertion` with `DECAP_CELL: []` and reuse the toggles. |
+| `DECAP_CELL: []` | decap-free fill | Decap cells leak: 0.26 µW of a 1.87 µW measurement in one design, 53–81 % of the leakage in others, and 2.1–3.8 µW of 2.9–4.9 µW in register-file and latch cores (energy per bin 27.3 → 12.1 nJ and 21.9 → 7.8 nJ without them). Report the logic's leakage, not the fill's (our measurements; no published source compares them). To fix an existing run, rerun from `OpenROAD.FillInsertion` with `DECAP_CELL: []` and reuse the toggles: only fill changes, but the fill instances get new names, so the toggle file names supply pins of fill that is no longer there; `check_annotation.py` ignores those (since 2026-10-29) and still fails on any lost signal pin. |
 | `ENDCAP_CELL` | `decap_3` (hd default; `ms` and `hs` use `decap_4`) | Endcaps remain decaps even with `DECAP_CELL: []`: 1 200–1 850 cells, about 4–6 nW. Negligible, but "decap-free" is not literal. |
 | `RUN_HEURISTIC_DIODE_INSERTION: false`, `DIODE_ON_PORTS: in` | | Heuristic insertion is off by default in OpenLane 2; keep it off, it broke legalisation at high utilisation. `DIODE_ON_PORTS` defaults to `none`. |
 | `RUN_ANTENNA_REPAIR: false`, `DRT_ANTENNA_REPAIR_ITERS: 0` | | Antenna violations are reported, not gated. Measurement only. In LibreLane, `RUN_ANTENNA_REPAIR` stops only the repair after global routing; a second loop after detailed routing (`DRT_ANTENNA_REPAIR_ITERS`, default 3, active whenever the PDK sets `DIODE_CELL`) checks antennas, inserts diodes and routes again. On a 28 000-cell core it inserted 1 232 diodes after routing had reached 0 violations, and the second routing started at 8 723 violations: double the routing time, cells the measurement does not want, and a risk for convergence. |
@@ -443,8 +444,8 @@ Check clock latency and skew after routing, not only slack.
   lost** (`tools/check_annotation.py <sta out dir> <netlist> <liberty>...`). The raw "not found" list is useless by
   eye: it has millions of expected names (supply pins, internal signals of the cell and macro models such as
   `notifier`, `D_delayed`, `and0_out_X`). The tool counts as lost only names that are signal pins of the instance's
-  cell (liberty `pin`/`bus`, not `pg_pin`), instances missing from the netlist, and top-level names. On real designs:
-  4–6 million names not found, 0 lost, in 5 s.
+  cell (liberty `pin`/`bus`, not `pg_pin`), instances missing from the netlist (except their supply pins, which carry
+  no activity), and top-level names. On real designs: 4–6 million names not found, 0 lost, in 5 s.
 - **OpenSTA version.** The default (LibreLane 3.0.16) has OpenSTA 2.7.0, with `report_activity_annotation`.
   OpenLane 2.3.10 builds OpenSTA commit `b5f3a02` (2024-10-02), which reports "2.6.0"; later commits carry the same
   label. In it, `report_activity_annotation` does not exist (added 2025-01-15; a script calling

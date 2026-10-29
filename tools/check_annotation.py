@@ -5,8 +5,9 @@ Usage: check_annotation.py <sta out dir> <netlist> <liberty> [<liberty> ...]
 Reads annot_notfound_pins.txt and annot_notfound_top.txt (written by the activity file of toggles_to_activity.py).
 Names that OpenSTA could not find are expected for supply pins and for the internal signals of the cell models
 (and0_out_X, notifier, D_delayed, ...). A name <instance>/<pin> whose pin is a signal pin of the instance's liberty cell,
-a name whose instance is not in the netlist, or any top-level name, means a measured activity was lost: the pin falls
-back to propagated activity. Prints the counts and exits 1 if any activity was lost.
+a name whose instance is not in the netlist (unless the pin is a supply pin: fill and tap instances renamed by a
+refill have only supply pins in the toggle file), or any top-level name, means a measured activity was lost: the pin
+falls back to propagated activity. Prints the counts and exits 1 if any activity was lost.
 """
 import re
 import sys
@@ -16,8 +17,8 @@ from root_clock_correction import read_netlist
 
 
 def signal_pins(liberties):
-    """Liberty cell -> its signal pin and bus names (pg_pin supplies excluded)."""
-    pins, cell = {}, None
+    """Liberty cell -> its signal pin and bus names (pg_pin supplies excluded); and the set of all supply pin names."""
+    pins, supplies, cell = {}, set(), None
     for path in liberties:
         for line in open(path, errors="ignore"):
             m = re.match(r"\s*cell\s*\(\s*\"?([\w$]+)\"?\s*\)", line)
@@ -25,10 +26,14 @@ def signal_pins(liberties):
                 cell = m.group(1)
                 pins.setdefault(cell, set())
                 continue
+            m = re.match(r"\s*pg_pin\s*\(\s*\"?(\w+)\"?\s*\)", line)
+            if m:
+                supplies.add(m.group(1))
+                continue
             m = re.match(r"\s*(pin|bus)\s*\(\s*\"?([\w$\[\]]+)\"?\s*\)", line)
             if m and cell:
                 pins[cell].add(m.group(2))
-    return pins
+    return pins, supplies
 
 
 def tokens(path):
@@ -47,13 +52,16 @@ def main():
     if len(sys.argv) < 4:
         sys.exit(__doc__)
     out, netlist, liberties = Path(sys.argv[1]), sys.argv[2], sys.argv[3:]
-    pins = signal_pins(liberties)
+    pins, supplies = signal_pins(liberties)
     cells = {name: cell for name, (cell, _) in read_netlist(netlist).items()}
-    expected, lost = 0, []
+    expected, absent_supplies, lost = 0, 0, []
     for name in tokens(out / "annot_notfound_pins.txt"):
         instance, _, pin = name.rpartition("/")
         if instance not in cells:
-            lost.append(name)                                  # an instance name OpenSTA does not know: a naming mismatch
+            if pin in supplies:
+                absent_supplies += 1                           # e.g. fill renamed by a refill: no activity to lose
+            else:
+                lost.append(name)                              # an instance name OpenSTA does not know: a naming mismatch
             continue
         cell_pins = pins.get(cells[instance], set())
         if pin in cell_pins or re.sub(r"\[\d+\]$", "", pin) in cell_pins:
@@ -62,7 +70,7 @@ def main():
             expected += 1
     lost += list(tokens(out / "annot_notfound_top.txt"))
     print(f"check_annotation: {expected} names not found as expected (supplies, model internals), "
-          f"{len(lost)} measured activities lost")
+          f"{absent_supplies} supply pins of instances absent from the netlist, {len(lost)} measured activities lost")
     for name in lost[:20]:
         print(f"   lost: {name}")
     sys.exit(1 if lost else 0)
