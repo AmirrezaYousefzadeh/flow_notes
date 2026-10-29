@@ -1,9 +1,13 @@
-# Per-pin activity power of a hardened neat_decoder with OpenSTA (run by flow/power.sh inside the LibreLane environment).
-# Environment: TOP NETLIST SPEF LIB_SC PERIOD_NS OUT ACT_TCL, for SRAM22 designs LIB_SRAM and MACRO_INST, optionally
-# EXTRA_ACT_TCL (activities that override the measured ones: the macro state correction) and CLK_PORT (default clk).
+# Per-pin activity power of a routed netlist with OpenSTA (sky130 notes 8; run inside the LibreLane environment).
+# Environment: TOP NETLIST SPEF LIB_SC (one or more liberties, space-separated) PERIOD_NS OUT ACT_TCL; for SRAM22 designs
+# LIB_SRAM and MACRO_INST; optionally EXTRA_ACT_TCL (activities that override the measured ones: the macro state
+# correction), CLK_PORT (default clk) and ZERO_DATA=1 (every data activity zero, the clock at its defined rate, no
+# activity file: run B of root_clock_correction_multipdk.py).
+# PERIOD_NS is in the time unit of the liberties (ns on sky130, ps on ASAP7) and must be the period the simulation used:
+# OpenSTA converts per-cycle activities with it.
 # Writes OUT/power_vcd.rpt (the group table) and OUT/power_vcd_by_instance.rpt (one line per instance).
 set OUT $::env(OUT)
-read_liberty $::env(LIB_SC)
+foreach l $::env(LIB_SC) { read_liberty $l }
 if {[info exists ::env(MACRO_INST)] && $::env(MACRO_INST) ne ""} { read_liberty $::env(LIB_SRAM) }
 read_verilog $::env(NETLIST)
 link_design $::env(TOP)
@@ -18,9 +22,14 @@ file mkdir $OUT
 # input ports without an annotation get activity 0 instead of OpenSTA's default (0.1 transitions per cycle); every port and
 # pin the simulation saw is annotated by the activity file
 set_power_activity -input -activity 0.0 -duty 0.0
-puts "sourcing activities $::env(ACT_TCL)"
-source $::env(ACT_TCL)
-if {[info exists ::env(EXTRA_ACT_TCL)]} { source $::env(EXTRA_ACT_TCL); puts "EXTRA_ACT_TCL: $::env(EXTRA_ACT_TCL)" }
+if {[info exists ::env(ZERO_DATA)] && $::env(ZERO_DATA)} {
+  set_power_activity -global -activity 0.0 -duty 0.0
+  puts "ZERO_DATA: every data activity zero, clocks at their defined rate"
+} else {
+  puts "sourcing activities $::env(ACT_TCL)"
+  source $::env(ACT_TCL)
+  if {[info exists ::env(EXTRA_ACT_TCL)]} { source $::env(EXTRA_ACT_TCL); puts "EXTRA_ACT_TCL: $::env(EXTRA_ACT_TCL)" }
+}
 report_power -digits 6 > $OUT/power_vcd.rpt
 report_power -instances [get_cells *] -digits 4 > $OUT/power_vcd_by_instance.rpt
 puts "WROTE $OUT/power_vcd.rpt"

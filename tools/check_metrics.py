@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Decide from the metrics of a LibreLane run whether the hardened design is accepted (flow/harden.sh; RULES.md,
-sections 3 and 5): routing DRC clean, setup and hold met at the typical corner, no power-grid violation, and at most
-CELL_CAP standard cells. Tap cells are not counted: their number grows with the core area, not with the design.
+"""Decide from the metrics of a LibreLane run whether the hardened design is accepted (sky130 notes 5.2): routing DRC
+clean, setup and hold met at one corner (--corner; run it once per sign-off corner), no power-grid violation, no
+unmatched SPEF entry in the own sign-off, and optionally at most --cell-cap standard cells. Tap cells are not counted:
+their number grows with the core area, not with the design.
 
 The timing comes from --signoff, the result of flow/tools/signoff_sta.tcl on the renamed netlist and SPEF that the
 simulation and the power analysis also read (with OpenLane 2, the flow's own sign-off lost the parasitics of the nets
@@ -12,23 +13,38 @@ With --synth-stat (the run's Yosys reports/stat.json), cells left unmapped by sy
 the kept sub-modules of parametrised modules (named `$paramod...`); those are modules of the design, not unmapped cells.
 
 Usage: check_metrics.py <run dir>/final/metrics.json [--signoff signoff.json] [--synth-stat stat.json]
-                        [--corner nom_tt_025C_1v80] [--cell-cap 300000] [-o summary.json]
+                        [--corner nom_tt_025C_1v80] [--cell-cap N] [-o summary.json]
+       check_metrics.py --synth-stat stat.json      (right after synthesis: unmapped cells only)
 Prints a one-line summary and PASS or FAIL; exit status 0 on PASS.
 """
 import argparse
 import json
 
 
+def unmapped(stat_json):
+    """Cells of a `$` type that is not a module of the design (kept `$paramod...` sub-modules are modules)."""
+    stat = json.load(open(stat_json))
+    return sum(n for cell, n in stat["design"]["num_cells_by_type"].items()
+               if cell.startswith("$") and cell not in stat["modules"])
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("metrics")
+    ap.add_argument("metrics", nargs="?")
     ap.add_argument("--corner", default="nom_tt_025C_1v80")
-    ap.add_argument("--cell-cap", type=int, default=300000)
+    ap.add_argument("--cell-cap", type=int, default=None)
     ap.add_argument("--signoff", default=None, help="signoff.json of flow/tools/signoff_sta.tcl")
     ap.add_argument("--synth-stat", default=None, help="reports/stat.json of the run's Yosys synthesis")
     ap.add_argument("-o", "--out", default=None)
     a = ap.parse_args()
 
+    if a.metrics is None:
+        if not a.synth_stat:
+            ap.error("give the run's final/metrics.json, or --synth-stat alone")
+        n = unmapped(a.synth_stat)
+        print(f"{n} cells left unmapped by synthesis")
+        print("PASS" if n == 0 else "FAIL")
+        raise SystemExit(0 if n == 0 else 1)
     m = json.load(open(a.metrics))
     taps = m.get("design__instance__count__class:tap_cell", 0)
     all_cells = m.get("design__instance__count__stdcell")
@@ -54,9 +70,7 @@ def main():
         summary["timing"] = "flow/tools/signoff_sta.tcl (renamed netlist and SPEF)"
         summary["spef_unmatched"] = signoff["spef_unmatched"]
     if a.synth_stat:
-        stat = json.load(open(a.synth_stat))
-        summary["unmapped_cells"] = sum(n for cell, n in stat["design"]["num_cells_by_type"].items()
-                                        if cell.startswith("$") and cell not in stat["modules"])
+        summary["unmapped_cells"] = unmapped(a.synth_stat)
     reasons = []
     if summary.get("unmapped_cells"):
         reasons.append(f"{summary['unmapped_cells']} cells left unmapped by synthesis")
@@ -70,7 +84,7 @@ def main():
         reasons.append(f"{summary['spef_unmatched']} SPEF entries without a match in the sign-off timing")
     if summary["power_grid_violations"]:
         reasons.append(f"{summary['power_grid_violations']} power-grid violations (unconnected supply pins)")
-    if summary["cells"] is None or summary["cells"] > a.cell_cap:
+    if summary["cells"] is None or (a.cell_cap is not None and summary["cells"] > a.cell_cap):
         reasons.append(f"{summary['cells']} standard cells, cap {a.cell_cap}")
     summary["pass"] = not reasons
     summary["reasons"] = reasons

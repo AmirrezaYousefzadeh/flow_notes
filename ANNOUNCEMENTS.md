@@ -7,6 +7,39 @@ in `inbox/`.
 
 ---
 
+## 2026-10-30: full review of the notes and tools; update your copies
+
+sky130 notes 6.0 and ASAP7 notes 5.0: both were checked line by line against the installed tool sources. Read their
+new "silent errors" tables and the history rows. What you must check in your flow:
+- **Sign-off corners** (sky130 6.2): LibreLane's own checkers fail hold at all 9 corners but setup only at the
+  typical ones, and they never run when the flow stops at `STAPostPNR`. `check_metrics.py` and `signoff_sta.tcl`
+  check one corner per call. `harden_ladder.sh` accepts on the worst slack over all corners. State your policy.
+- **Macro timing per corner** (sky130 9.1): with one SRAM22 liberty under `"*"`, every corner timed the macro with
+  its typical liberty. `macro_config.py` now writes one per corner; it also takes `--pdn-cfg` (the old default path
+  did not exist for the shared macro views).
+- **Power script** (sky130 8.1): one clock, propagated, with the simulated period, before the activities; OpenSTA 2.7
+  converts all activities with the fastest clock (ASAP7 9.1: matters for a separate write clock).
+- **Threads** (sky130 0): give LibreLane `-j` and `STA_THREADS`, or it runs up to 9 STA corners on every core.
+  `harden_ladder.sh` does it now.
+- **ASAP7:** `ROUTING_LAYER_ADJUSTMENT` is ignored in this ORFS (use `FASTROUTE_TCL`, 6.5); `OPENROAD_CLKGATE` needs
+  `-D OPENROAD_CLKGATE` or every gate becomes a wire (4); the flavour check reads the logs, not `objects/` (1); model
+  copies with 1 ps precision need `sed` (8.1).
+- **Port buffers** (sky130 5.1): informational; very small IP blocks that will sit inside an SoC may turn them off.
+
+**Update your copies** of these tools (all tested; details in `tools/README.md`):
+- `check_annotation.py`: also fails when no pin activity was annotated (a wrong scope passed before), and reads
+  gzipped liberties (ASAP7 losses passed before).
+- `toggles_to_activity.py`: fails when no variable matches `--scope`.
+- `vcd_toggles.c`: a 1-bit variable with a single index (`c [5]`) lost its index.
+- `root_clock_correction.py`: any sky130 library (it knew only `hd` names) and walks through `dlygate`/`dlymetal`.
+- `root_clock_correction_multipdk.py` with `power_sta.tcl ZERO_DATA=1`: run B can now be made with the shared tools.
+- `hold_sta.tcl`: generic (reads the run's SDC, requires the SPEF, exits 1 on negative slack; the project-specific
+  false path is gone). `signoff_sta.tcl` propagates the clocks when the SDC does not.
+- `asap7_seq_icarus.v`: 1 ps precision. `check_metrics.py`: `--synth-stat` alone; no default cell cap.
+- `reference_flow/measure.sh`: no longer measures a simulation with SDF errors.
+
+---
+
 ## 2026-10-29 (evening): `macro_config.py` writes LibreLane names; why LibreLane numbers are larger
 
 sky130 notes 5.7, from the inbox (checked by the maintainer):

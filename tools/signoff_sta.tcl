@@ -1,4 +1,4 @@
-# Sign-off timing of a routed run at the typical corner, with the parasitics of every net (flow/harden.sh).
+# Sign-off timing of a routed run at one corner (the liberties, SPEF and SDC given), with the parasitics of every net.
 # LibreLane's own sign-off reads the SPEF of the original netlist, whose escaped hierarchical names it cannot match
 # (flow/tools/legal_names.py): the nets inside sub-modules would be timed without their wires. This script reads the
 # renamed netlist and SPEF instead, so that every net has its parasitics.
@@ -9,6 +9,12 @@ read_verilog $::env(NETLIST)
 link_design $::env(TOP)
 read_spef $::env(SPEF)
 read_sdc $::env(SDC)
+# as LibreLane does: an SDC that says nothing about clock propagation gets propagated clocks
+set sdc_text [read [set fh [open $::env(SDC)]]]; close $fh
+if { ![string match "*set_propagated_clock*" $sdc_text] } {
+  puts "signoff_sta: the SDC does not propagate the clocks: propagating all clocks"
+  set_propagated_clock [all_clocks]
+}
 file mkdir $::env(OUT)
 report_checks -path_delay max -group_count 20 -fields {slew cap input_pins} -digits 4 > $::env(OUT)/max.rpt
 report_checks -path_delay min -group_count 20 -fields {slew cap input_pins} -digits 4 > $::env(OUT)/min.rpt

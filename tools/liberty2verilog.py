@@ -122,7 +122,8 @@ def cell_model(name, body):
         clk = [p[0] for p in pins if p[1] == "input" and "clock" in p[6] and re.search(r"\bclock\s*:\s*true", p[6])]
         clk = clk[0] if clk else [n for n in ins if n in ("CK", "CLK")][0]
         en = [p[0] for p in pins if p[5] and p[1] == "input"]
-        L.append(f"  reg IQ; always @(*) if (!{clk}) IQ = {' | '.join(en) if en else '1b1'};")
+        en_expr = " | ".join(en) if en else "1'b1"
+        L.append(f"  reg IQ; always @(*) if (!{clk}) IQ = {en_expr};")
         for p in outs:
             L.append(f"  assign {p[0]} = {clk} & IQ;")
     else:

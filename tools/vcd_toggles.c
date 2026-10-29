@@ -13,7 +13,7 @@
  * Build: cc -O2 -o flow/tools/vcd_toggles flow/tools/vcd_toggles.c   (flow/gls.sh builds it when the source changes)
  * Usage: vcd_toggles [-o out.tsv] [--begin T] [--end T] [vcd | -]
  *   --begin/--end  count only within [T_begin, T_end] (VCD time units), as read_power_activities -begin/-end do; the
- *                  challenge flow uses neither (the testbench starts the waveform at the window start).
+ *                  reference flow uses neither (its testbench starts the waveform at the window start).
  */
 #include <ctype.h>
 #include <stdint.h>
@@ -273,7 +273,7 @@ int main(int argc, char **argv) {
         unsigned long long high = s->high[b];
         if (s->prev_t[b] >= 0 && s->prev[b] == '1' && tmax > s->prev_t[b])   /* still '1' at the end */
           high += (unsigned long long)(tmax - s->prev_t[b]);
-        if (s->width == 1 && al->has_range != 1) {
+        if (s->width == 1 && al->has_range == 0) {
           fprintf(o, "%s\t%.1f\t%llu\n", al->name, s->tc[b], high);
         } else {
           int bit = al->has_range ? (al->msb >= al->lsb ? al->msb - b : al->msb + b) : (s->width - 1 - b);

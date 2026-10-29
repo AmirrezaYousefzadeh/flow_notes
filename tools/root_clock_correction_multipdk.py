@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
-"""Round 5: correction of OpenSTA's clock-network activity for a design whose root clock is switched off most of the time
-(front end: oscillator enabled for a few per cent of the time). OpenSTA 2.6.0 gives every pin of the clock network between the
-clock port and the first clock-gate cell the activity of the clock definition (2 per period) and ignores the annotation there;
-downstream of a clock gate the annotated activity is used (checked per instance on bmi_snn_sp: gated clock buffers 0.41 of the
-full-rate power for a measured 0.39 activity ratio). This script walks the root network of one clock port in the routed netlist
-(through buffers and inverters, stopping at clock-gate cells and flip-flop clock pins), and scales the clock-driven dynamic power
-of those cells by the measured duty of the root clock: P = P_A - (1 - d) * P_dyn,B where A is the annotated run and B a run with
-all data activities zero (env GLOBAL_ZERO=1 GLOBAL_ZERO_DUTY=0 in power/power_vcd_sta.tcl; for buffers P_dyn,B = P_dyn,A).
-Usage: root_clock_correction.py <netlist.v> <clock_port> <duty> <by_instance_A.rpt> <by_instance_B.rpt> [--icg dlclkp] [-o out.json]
-Prints the corrected group totals (Sequential, Combinational, Clock, Macro by cell type; leakage unchanged)."""
+"""Root-clock correction for any PDK (sky130 notes 8.2, ASAP7 notes 9.6), for a design whose root clock runs only a
+fraction d of the time. OpenSTA gives every pin of the clock network between the clock port and the first clock gate the
+activity of the clock definition (2 per period) and ignores the annotation there; downstream of a clock gate it uses the
+annotated activity. This script walks the root network of one clock port in the routed netlist (through buffers,
+inverters and hold or delay buffers, stopping at clock gates and at flip-flop clock pins) and removes the part of their
+dynamic power that the stopped clock does not spend: P = P_A - (1 - d) * P_dyn,B, where A is the annotated power run and
+B the same run with all data activities zero (tools/power_sta.tcl with ZERO_DATA=1). For buffers P_dyn,B = P_dyn,A; for
+flip-flops clocked by the root, the annotated internal power is scaled by the duty directly.
+Usage: root_clock_correction_multipdk.py <netlist.v> <clock_port> <duty> <by_instance_A.rpt> <by_instance_B.rpt>
+       [--icg dlclkp,ICGx,...] [--buf clkbuf,...] [--prefix <instance prefix>] [-o out.json]
+Prints the reported and corrected group totals (Sequential, Combinational, Clock by cell type; leakage unchanged) and,
+if power_vcd.rpt sits next to report A, its total minus the removed power. Warns about root cells missing from B."""
 import re, sys, json, argparse, collections
 ap = argparse.ArgumentParser(); ap.add_argument("netlist"); ap.add_argument("clock_port"); ap.add_argument("duty", type=float); ap.add_argument("rptA"); ap.add_argument("rptB")
-ap.add_argument("--icg", default="dlclkp,ICGx,icgt,lgcp,CLKGATE"); ap.add_argument("--buf", default="clkbuf,clkinv,buf,inv,BUF,INV,CKBUF,CKINV,HB1,HB2,HB3,HB4,dly,DLY"); ap.add_argument("-o", default=None)   # round 10: hold/delay buffers of the kits (ASAP7 HBx, sky130 dlygate) continue the walk
-ap.add_argument("--prefix", default="", help="instance-name prefix of the netlist inside the reports (round 6: the front end is u_fe/ inside bmi_sys)")
+ap.add_argument("--icg", default="dlclkp,ICGx,icgt,lgcp,CLKGATE"); ap.add_argument("--buf", default="clkbuf,clkinv,buf,inv,BUF,INV,CKBUF,CKINV,HB1,HB2,HB3,HB4,dly,DLY"); ap.add_argument("-o", default=None)   # hold/delay buffers of the kits (ASAP7 HBx, sky130 dlygate) continue the walk
+ap.add_argument("--prefix", default="", help="instance-name prefix of the netlist inside the reports (the block's instances inside a larger netlist)")
 a = ap.parse_args()
 nl = open(a.netlist, errors="ignore").read()
 inst = {}
@@ -45,7 +47,7 @@ def rpt(path):
         f = line.split()
         if len(f) >= 5:
             n = f[4].lstrip("\\")
-            if a.prefix:                                   # round 6: only the instances of the prefixed block, names as in its own netlist
+            if a.prefix:                                   # only the instances of the prefixed block, names as in its own netlist
                 if not n.startswith(a.prefix): continue
                 n = n[len(a.prefix):]
             try: d[n] = (float(f[0]), float(f[1]), float(f[2]), float(f[3]))
@@ -59,16 +61,19 @@ def group(t):
     if any(k in t for k in SEQ): return "Sequential"
     return "Combinational"
 tot = collections.defaultdict(lambda: [0.0, 0.0, 0.0, 0.0]); corr = collections.defaultdict(lambda: [0.0, 0.0, 0.0, 0.0]); nroot = collections.Counter(); removed = 0.0; removed_i = 0.0; removed_s = 0.0
+missing_b = []
 for n, (i, s, l, t_) in A.items():
     t = inst.get(n, ("?",))[0]; g = group(t)
     for k, v in enumerate((i, s, l, t_)): tot[g][k] += v
     ci, cs = i, s
     if n in root:
         nroot[root[n]] += 1; b = B.get(n)
-        if b:
-            di, ds = b[0], b[1]                                           # clock-driven dynamic power at the full clock rate
+        if b is None and root[n] != "flop":
+            missing_b.append(n)
+        if b or root[n] == "flop":
+            di, ds = (b[0], b[1]) if b else (i, 0.0)                     # clock-driven dynamic power at the full clock rate
             if root[n] == "flop":
-                # round 10: a register clocked from the root network (en_q, wr_en_q) toggles a few times per bin, so its internal power
+                # a register clocked from the root network (en_q, wr_en_q) toggles a few times per bin, so its internal power
                 # in the annotated run is the full-rate clock-pin energy itself; the zero-data run does not give it reliably (the global
                 # zero activity overrides the propagated clock activity at register clock pins in some libraries: 0 W for NanGate45,
                 # a state-dependent value for ASAP7), so the annotated internal power is scaled by the duty directly
@@ -81,7 +86,7 @@ res = {"duty": a.duty, "root_cells": dict(nroot), "removed_W": removed, "removed
        "corrected": {g: dict(zip(("internal", "switching", "leakage", "total"), v)) for g, v in corr.items()}}
 for k in ("reported", "corrected"):
     res[k]["Total"] = {q: sum(res[k][g][q] for g in res[k] if g != "Total") for q in ("internal", "switching", "leakage", "total")}
-# round 10: the OpenSTA group table (power_vcd.rpt next to the by-instance report) is the reference total; its per-instance sum
+# the OpenSTA group table (power_vcd.rpt next to the by-instance report) is the reference total; its per-instance sum
 # exceeds it by up to 1 % on the largest netlists, so the corrected total handed on is report total - removed
 import os
 rp = os.path.join(os.path.dirname(a.rptA), "power_vcd.rpt")
@@ -91,7 +96,9 @@ if os.path.exists(rp):
             f = line.split(); gi, gs, gl, gt = (float(x) for x in f[1:5])
             res["report"] = {"internal": gi, "switching": gs, "leakage": gl, "total": gt}
             res["corrected_report"] = {"internal": gi - removed_i, "switching": gs - removed_s, "leakage": gl, "total": gt - removed}
+res["root_cells_missing_in_B"] = missing_b
 print(f"root network of {a.clock_port}: {dict(nroot)}; duty {a.duty:.4f}; removed {removed*1e6:.4f} uW")
+if missing_b: print(f"  WARNING: {len(missing_b)} root cells missing from report B, not corrected: {missing_b[:5]}")
 for g in ("Sequential", "Combinational", "Clock", "Total"):
     r = res["reported"].get(g, {}).get("total", 0); c = res["corrected"].get(g, {}).get("total", 0)
     print(f"  {g:14s} reported {r*1e6:10.4f} uW  corrected {c*1e6:10.4f} uW")

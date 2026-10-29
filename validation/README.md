@@ -12,6 +12,12 @@ environment variable (`OL_MODULE`, `OSSCAD`). Run `run_validation.sh old|new|ol2
 
 Summaries of each run are kept in `results/`; work directories are deleted after a validation.
 
+**Before the next validation** (review of 2026-10-30): `neat_ref/` is the copy of 2026-10-24, written for OpenLane 2.
+It still uses the `FP_PDN_*` and `DECAP_CELL` names, lacks `DRT_ANTENNA_REPAIR_ITERS: 0` and the annotation checks,
+and its SDC divides the derating by an integer. Replace it by the generic, runnable reference set the upgrade policy
+asks for (`UPSTREAM.md`: a small SRAM22 design, a large latch-memory core, a dense adder-tree core, an ASAP7 core).
+`run_validation.sh` now gives the copy the job's own CPU set instead of pinning it to CPUs 0..n-1.
+
 ## 2026-10-24: LibreLane 3.0.16, open_pdks 8afc834, OSS CAD Suite 2026-10-24, ORFS ef2cb37
 
 | quantity | old (OpenLane 2.3.10, open_pdks c6d73a35, Icarus 13) | new (LibreLane 3.0.16, open_pdks 8afc834, Icarus 14) |
@@ -35,7 +41,7 @@ Summaries of each run are kept in `results/`; work directories are deleted after
   buffers, 10 µm² each; the old one used mostly `buf_2`, 5 µm²) and resizes 1 instance instead of 509, so cells keep Yosys's drive strength 2
   instead of being sized down to 1 (167 instead of 397 drive-1 cells after the repair). LibreLane's antenna repair
   after detailed routing adds 102 diodes (OpenLane 2: 55); that run predates `DRT_ANTENNA_REPAIR_ITERS: 0`, and so
-  does this validation, whose new column includes those diodes. The next validation uses the setting.
+  does this validation, whose new column includes those diodes.
 - **Where the extra dynamic power comes from** (+22 nW; per-instance power reports of the old and new runs, after the
   root-clock correction): the root clock tree with 10 instead of 4 buffers +9 nW, delay cells +7.5 nW, logic at drive
   strength 2 +7 nW, port buffers +1 nW (1.3 of 112 nW), other buffers −3 nW, diodes about 0.

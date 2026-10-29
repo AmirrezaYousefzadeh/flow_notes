@@ -34,6 +34,8 @@ else
   rm -rf "$OUT/gls"
   "$F/gls.sh" "$RUN" "$SUB" "$SESSION" "$STREAM" "$OUT/gls" "$NB" || true      # an overrun is recorded, not fatal
   [[ -s "$OUT/gls/rt.json" ]] || { echo "the gate-level simulation did not finish (see $OUT/gls/sim.log)"; exit 1; }
+  SDF_ERR=$("$NEAT_PYTHON" -c 'import json,sys; print(json.load(open(sys.argv[1])).get("sdf_errors", 0))' "$OUT/gls/rt.json")
+  [[ "$SDF_ERR" == 0 ]] || { echo "$SDF_ERR SDF annotation errors (see $OUT/gls/sim.log): not measured"; exit 1; }
   echo "$STAMP" > "$OUT/gls/stamp"
 fi
 TOP="$TOP" MACRO_CELL="$MACRO_CELL" MACRO_INSTANCES="$MACRO_INSTANCES" "$F/power.sh" "$RUN" "$OUT/gls" "$CLK_NS" "$OUT/power"

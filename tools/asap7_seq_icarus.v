@@ -1,8 +1,9 @@
-// Behavioural ASAP7 sequential cells for SDF-annotated gate-level simulation with Icarus (round 5, E5).
-// The vendor models (asap7sc7p5t_SEQ_*_TT) build the flip-flops from UDPs with a notifier and clock the UDP from the delayed_* nets
-// of $setuphold timing checks; Icarus implements neither, so the state never leaves X once the specify blocks are enabled.
-// These modules keep the pin names and the IOPATH paths of the vendor cells (SDF from OpenSTA write_sdf: CLK -> QN, CLK -> GCLK).
-`timescale 1ns/10ps
+// Behavioural ASAP7 sequential cells for SDF-annotated gate-level simulation with Icarus (ASAP7 notes 8.1).
+// The vendor models (asap7sc7p5t_SEQ_*_TT) build the flip-flops from UDPs with an uninitialised notifier and $setuphold
+// timing checks; in annotated Icarus runs their state stayed X. These modules keep the pin names and the IOPATH paths of
+// the vendor cells (SDF from OpenSTA write_sdf: CLK -> QN, CLK -> GCLK). Precision 1 ps: with the vendor 10 ps, the
+// annotated delays (5-45 ps) are rounded to 10 ps steps; give the vendor models you compile with these the same 1 ps.
+`timescale 1ns/1ps
 
 module DFFHQNx1_ASAP7_75t_R (QN, D, CLK);
   output QN; input D, CLK; reg QN;

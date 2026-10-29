@@ -7,7 +7,8 @@
 # Result: <work dir>/runs/accepted -> the accepted run (absent if none passed), <work dir>/ladder.json (all attempts),
 #         <work dir>/logs/librelane_u<U>.log per attempt. Exit status 0 if a run was accepted, 1 otherwise.
 # Acceptance (from the run's final/metrics.json): route__drc_errors 0, timing__setup__ws >= 0 and timing__hold__ws >= 0
-# (LibreLane's worst over its sign-off corners), design__power_grid_violation__count 0. If SIGNOFF_CMD is set, it is
+# (LibreLane's worst over all its STA corners, setup included: stricter than its own checkers, which check setup at
+# the typical corners only and do not run with --to OpenROAD.STAPostPNR), design__power_grid_violation__count 0. If SIGNOFF_CMD is set, it is
 # run as `$SIGNOFF_CMD <run dir>` after those checks and must exit 0 as well (your own sign-off, notes 6.2).
 # Environment (defaults in brackets):
 #   LIBRELANE [/media/hardware_design_tools/librelane]   PDK_ROOT [/media/pdk/sky130_8afc834]   PDK [sky130A]
@@ -15,13 +16,14 @@
 #   LAST_STEP [OpenROAD.STAPostPNR]   EXTRA_OVERRIDES: more "KEY=VALUE" overrides, space separated (JSON values)
 #   watchdog: WD_VIOL3 [500000] after 3 routing iterations, WD_VIOL6 [20000] after 6, WD_VIOL10 [3000] after 10,
 #             WD_IDLE_H [12] hours without a finished iteration, WD_MAX_H [36] hours for any attempt
-#   JOBQ_THREADS (set by jobq): routing threads (DRT_THREADS)
+#   JOBQ_THREADS (set by jobq): routing threads (DRT_THREADS) and LibreLane's worker limit (-j; also caps the parallel
+#   STA and RCX corners, whose STA_THREADS default would otherwise be every core)
 set -euo pipefail
 [[ $# -eq 3 ]] || { sed -n '6,7p' "$0"; exit 2; }
 CFG="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
 mkdir -p "$2/logs"; WORK="$(cd "$2" && pwd)"; UTILS="$3"
 LIBRELANE="${LIBRELANE:-/media/hardware_design_tools/librelane}"
-PDK_ROOT="${PDK_ROOT:-/media/pdk/sky130_8afc834}"; PDK="${PDK:-sky130A}"
+PDK_ROOT="${PDK_ROOT:-/media/pdk/sky130_8afc834}"; export PDK="${PDK:-sky130A}"
 LAST_STEP="${LAST_STEP:-OpenROAD.STAPostPNR}"
 THREADS="${JOBQ_THREADS:-4}"
 for U in $UTILS; do [[ "$U" =~ ^[0-9]+$ ]] || { echo "utilisations must be whole numbers: $UTILS"; exit 2; }; done
@@ -94,9 +96,9 @@ for U in $UTILS; do
   OVR=(--override-config "FP_CORE_UTIL=$U" --override-config "PL_TARGET_DENSITY_PCT=$DENS"
        --override-config "DRT_THREADS=$THREADS")
   for o in ${EXTRA_OVERRIDES:-}; do OVR+=(--override-config "$o"); done
-  ( cd "$WORK" && exec setsid nice -n 19 \
+  ( cd "$WORK" && export _OPENLANE_MAX_CORES="$THREADS" && exec setsid nice -n 19 \
       nix --extra-experimental-features "nix-command flakes" develop --accept-flake-config "$LIBRELANE" -c \
-      python3 -m librelane --pdk-root "$PDK_ROOT" --pdk "$PDK" --manual-pdk --run-tag "$TAG" --overwrite \
+      python3 -m librelane -j "$THREADS" --pdk-root "$PDK_ROOT" --pdk "$PDK" --manual-pdk --run-tag "$TAG" --overwrite \
       --to "$LAST_STEP" "${OVR[@]}" "$CFG" ) > "$LOG" 2>&1 &
   ACTIVE=$!
   STOPPED=$(watchdog "$(dirname "$CFG")/runs/$TAG")
@@ -126,7 +128,7 @@ attempts = [dict(zip(("utilisation_pct", "density_pct", "minutes", "verdict"), l
 for a in attempts:
     for k in ("utilisation_pct", "density_pct", "minutes"):
         a[k] = int(a[k])
-sources = os.path.join(pdk_root, "sky130A", "SOURCES")
+sources = os.path.join(pdk_root, os.environ.get("PDK", "sky130A"), "SOURCES")
 summary = {"config": cfg, "accepted_utilisation_pct": int(accepted) if accepted else None, "attempts": attempts,
            "librelane": os.path.realpath(librelane),
            "pdk": open(sources).read().strip() if os.path.exists(sources) else os.path.realpath(pdk_root)}

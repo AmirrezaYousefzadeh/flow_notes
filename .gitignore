@@ -1,3 +1,4 @@
 maintenance/logs/
 validation/neat_ref/
 validation/work_*/
+__pycache__/

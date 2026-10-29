@@ -7,9 +7,9 @@ Reads <report dir>/power_vcd_by_instance.rpt and power_vcd.rpt (flow/tools/power
 OpenSTA gives every pin of the clock network between the clock port and the first clock gate the activity of the clock
 definition, two transitions per period, whatever the annotation says; downstream of a clock gate it uses the measured
 activity. In the real-time window the testbench runs the clock a fraction d of the time (the duty). The root network is
-found by walking from the clock port through buffers and inverters; it ends at clock gates (sky130 dlclkp) and at any
-other cell the root clock reaches (flip-flops clocked by the ungated clock, macros, logic). The correction removes the
-part of their dynamic power that the stopped clock does not spend:
+found by walking from the clock port through buffers, inverters and hold or delay buffers; it ends at clock gates
+(dlclkp, sdlclkp) and at any other cell the root clock reaches (flip-flops clocked by the ungated clock, macros,
+logic). The correction removes the part of their dynamic power that the stopped clock does not spend:
   * buffers and inverters of the root: (1 - d) x (internal + switching);
   * clock gates and the other cells on the root: (1 - d) x internal (their output switching is measured);
   P = P_report - removed, where P_report is the total of the group table. Leakage is not changed.
@@ -73,11 +73,12 @@ def root_network(cells, clock_port):
         seen.add(net)
         for name in sinks.get(net, []):
             cell, pins = cells[name]
-            kind = cell.replace("sky130_fd_sc_hd__", "")
+            kind = re.sub(r"^sky130_fd_sc_[a-z]+__", "", cell)         # any sky130 standard-cell library
             inputs = [p for p in pins if p not in OUTPUT_PINS and p not in SUPPLY_PINS]
-            if kind.startswith("dlclkp"):
+            if kind.startswith(("dlclkp", "sdlclkp")):
                 root[name] = "gate"
-            elif kind.startswith(("clkbuf", "clkinv", "clkdlybuf", "buf", "inv")) and len(inputs) == 1:
+            elif kind.startswith(("clkbuf", "clkinv", "clkdlybuf", "clkdlyinv", "dlygate", "dlymetal", "dlybuf", "buf",
+                                  "inv")) and len(inputs) == 1:      # hold and delay buffers continue the walk too
                 root[name] = "buffer"
                 todo += [pins[p] for p in OUTPUT_PINS if p in pins]
             else:

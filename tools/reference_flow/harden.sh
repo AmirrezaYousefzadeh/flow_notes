@@ -71,7 +71,8 @@ wait_librelane() {  # wait for the active run without a watchdog; returns its ex
 synthesise() {     # <config>: synthesis only; the metrics of state_out.json
   sed -e "s/@UTIL@/50/" -e "s/@DENS@/60/" "$WORK/config.template.yaml" > "$1"
   [[ -z "$MACRO_INSTANCES" ]] ||
-    "$NEAT_PYTHON" "$F/tools/macro_config.py" "$1" "$F/macros" "$MACRO_CELL" $MACRO_INSTANCES --synthesis-only
+    "$NEAT_PYTHON" "$F/tools/macro_config.py" "$1" "$F/macros" "$MACRO_CELL" $MACRO_INSTANCES --synthesis-only \
+      --pdn-cfg "$F/pdn_cfg_sram22.tcl" --max-instances 4
   run_librelane "$1" synth Yosys.Synthesis "$WORK/logs/librelane_synth.log"
   wait_librelane || { tail -n 5 "$WORK/logs/librelane_synth.log"; exit 1; }
 }
@@ -191,7 +192,7 @@ for U in $UTILS; do
   CFG="$WORK/config_$TAG.yaml"
   sed -e "s/@UTIL@/$U/" -e "s/@DENS@/$DENS/" "$WORK/config.template.yaml" > "$CFG"
   [[ -z "$MACRO_INSTANCES" ]] ||
-    "$NEAT_PYTHON" "$F/tools/macro_config.py" "$CFG" "$F/macros" "$MACRO_CELL" $MACRO_INSTANCES \
+    "$NEAT_PYTHON" "$F/tools/macro_config.py" "$CFG" "$F/macros" "$MACRO_CELL" $MACRO_INSTANCES --pdn-cfg "$F/pdn_cfg_sram22.tcl" \
       --std-area "$STD_AREA" --utilisation "$U"
   echo "==== $SESSION: clock $CLK_NS ns, utilisation $U % (density $DENS %), run $TAG  ($(date +%H:%M))"
   T0=$(date +%s)

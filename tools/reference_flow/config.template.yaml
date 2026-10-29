@@ -4,6 +4,8 @@
 #   sky130A / sky130_fd_sc_hd, sign-off at the typical corner (tt, 1.8 V, 25 C) by flow/tools/check_metrics.py,
 #   decap-free fill, no antenna repair, hold margins of 0.5 ns. The flow stops after sign-off STA (no GDS streamout,
 #   no Magic/KLayout DRC, no LVS): routing DRC errors are those of the detailed router.
+# For other designs (flow_notes): the 0.5 ns hold margins and the typical-corner-only sign-off are this design's
+# choices; sky130 notes 5.1 and 6.2 recommend the default margins and a sign-off at every corner you report.
 DESIGN_NAME: neat_decoder
 VERILOG_FILES: @FILES@
 VERILOG_INCLUDE_DIRS: @INCDIRS@
@@ -28,5 +30,6 @@ PL_RESIZER_HOLD_SLACK_MARGIN: 0.5    # hold margins (ns): robust gate-level timi
 GRT_RESIZER_HOLD_SLACK_MARGIN: 0.5
 PL_RESIZER_HOLD_MAX_BUFFER_PCT: 80
 GRT_RESIZER_HOLD_MAX_BUFFER_PCT: 80
-ERROR_ON_SYNTH_CHECKS: false
+ERROR_ON_SYNTH_CHECKS: false         # Yosys loop and undriven-wire checks: read the synthesis log yourself
+ERROR_ON_UNMAPPED_CELLS: false       # miscounts kept $paramod modules; harden.sh runs check_metrics.py --synth-stat
 RUN_LINTER: false

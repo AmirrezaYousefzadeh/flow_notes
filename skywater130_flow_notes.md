@@ -1,6 +1,6 @@
 # SkyWater 130 nm flow notes: synthesis, hardening, gate-level simulation and power
 
-**Version 5.7, last updated 2026-10-29.** The full history is in "Version history" below.
+**Version 6.0, last updated 2026-10-30.** The full history is in "Version history" at the end.
 
 Read this before you synthesise, harden or measure anything on sky130 on this machine. It is written for engineers
 and AI agents. Everything here was learned the hard way, in several research designs measured on this machine:
@@ -37,24 +37,24 @@ compare it with the line under the title. If the version has changed, read the h
 updates these rules when upstream fixes a bug that one of them works around. Do not install or upgrade tools or PDKs
 yourself.
 
-### Version history
+**Start here.** New on this machine: sections 0 (the shared queue), 1 (versions and paths) and 2 (reference tools).
+Before every measurement: the table below, then the checklist in section 10.
 
-| version | date | change |
+**The silent errors, at a glance.** Each of these produced a plausible but wrong number here.
+
+| error | effect seen | section |
 |---|---|---|
-| 1.0 | 2026-10-24 | first version, from the most thoroughly verified flow on this machine plus audits of the others |
-| 1.1 | 2026-10-24 | 8.2: stopping clock propagation at the clock gates is wrong (combinational power disappears with toggle-count activities) |
-| 2.0 | 2026-10-24 | section 0 rewritten: all heavy jobs go through the shared `jobq` queue. Corrected SRAM22 clock-pin conditions, clock duty and combinational-share ranges, hold-buffer counts, memory figures. New: low-voltage corners, measurement-only settings, decaps and endcaps, `sky130_fd_sc_ms` without leakage, clock-gate fan-out and SRAM clock slew, Icarus capacity and Verilator, pin/net activity order, register initialisation, five checklist lines |
-| 2.1 | 2026-10-24 | rules checked against tool sources, documentation and issue trackers; sources added; version-specific behaviour of OpenSTA and Icarus; SRAM22 slew limit fixed upstream; 8.8 what a power number must state; precheck contents |
-| 3.0 | 2026-10-24 | only the maintainer edits the notes; findings go to `inbox/` |
-| 4.0 | 2026-10-24 | the notes are general: no references to individual projects. Reference tools now live in `flow_notes/tools/` (section 2); fixed SRAM22 views in `/media/pdk` (9.1); broadcast announcements in `ANNOUNCEMENTS.md` |
-| 5.0 | 2026-10-24 | **new default versions** (section 1): LibreLane 3.0.16 with open_pdks `8afc834`, OSS CAD Suite 2026-10-24; OpenLane 2 kept for earlier numbers, never with the new PDK; validation results |
-| 5.1 | 2026-10-24 | header: which rules are correctness (always) and which are silicon robustness (optional when not taping out); 5.1: default hold margins for measurement-only projects instead of a 0.5 ns overfix |
-| 5.2 | 2026-10-25 | from the inbox: timing derating was off in every OpenLane 2 run on sky130 (6.1); OpenSTA 2.7 reads SPEF with escaped names (5.4, checked); `check_annotation.py` fails a run on lost activities (8.1, section 10); pin versions in scripts (1); reference flow now on the default versions (2) |
-| 5.3 | 2026-10-25 | the queue's guide for agents is now `/media/amir/.jobq/AGENTS.md` (section 0) |
-| 5.4 | 2026-10-28 | from the inbox: hardening policy and `tools/harden_ladder.sh` (5.3); routability can drop with LibreLane, `PL_TIMING_DRIVEN` (1, 5.7); unmapped-cell check with kept parametrised modules (1); `CTS_APPLY_NDR: none` and zero setup margins for latch memories (5.1); exception names in LibreLane and ORFS (6.1); sanitiser drops zero-filled conditional repeats (7.1); Verilator VCD scope and an annotated-pin check (7.4, 10) |
-| 5.5 | 2026-10-29 | from the inbox: LibreLane's antenna repair after detailed routing (`DRT_ANTENNA_REPAIR_ITERS: 0`, 5.1); watchdogs must not count time frozen by the queue (5.3); section 0 follows the queue's current rules (`--time`, freezing, CPU set) |
-| 5.6 | 2026-10-29 | from the inbox: `check_annotation.py` no longer fails a decap-free refill with reused toggles (supply pins of renamed fill), 5.1, 8.1 |
-| 5.7 | 2026-10-29 | from the inbox: `macro_config.py` writes LibreLane's `PDN_*` names (5.5); the larger cell count with LibreLane comes from OpenROAD's design repair (delay cells as port buffers, almost no downsizing) and post-routing diodes, not from Yosys (1) |
+| escaped hierarchical names: Icarus drops cell delays, old OpenSTA drops parasitics | power +17 % once fixed | 5.4 |
+| OpenSTA charges the root clock network at the full clock rate in a design that stops its clock | 37–81 % of OpenSTA's total | 8.2 |
+| clock propagation stopped at the clock gates (old OpenSTA) | combinational power about 0; energy 7–174 % low | 8.2 |
+| SRAM22 energy listed per supply and ground pin, read energy weighted by the wrong probability | macro energy ×2; reads ×duty | 9.1 |
+| decap cells in the fill | 53–81 % of the reported leakage | 5.1 |
+| a pin activity written after its net activity | 12 % of the energy per bin | 7.2 |
+| a VCD scope prefix that matches nothing | no data activity at all; only clock power | 7.4, 8.1 |
+| a macro or library without its liberty | a black box with zero power | 8.3, 9.4 |
+| timing derating off in OpenLane 2 | slacks optimistic by up to 5 % | 6.1 |
+| an SDC exception that matches no object | the constraint silently does nothing | 6.1 |
+| sign-off on incomplete parasitics or at one corner only | hold failures missed | 5.4, 6.2 |
 
 Contents:
 0. Ground rules on this machine
@@ -62,7 +62,7 @@ Contents:
 2. Reference tools
 3. RTL rules for a design you want to measure
 4. Synthesis
-5. Hardening with OpenLane 2
+5. Hardening with LibreLane
 6. Timing constraints and sign-off
 7. Gate-level simulation
 8. Power with OpenSTA
@@ -88,7 +88,9 @@ The workstation (24 cores, 62 GB RAM, one RTX 4060 Ti with 8 GB) is shared with 
   - **Your job may be frozen.** When free memory runs low, the queue freezes a whole job (it stops where it is and its
     memory goes to swap) and resumes it later: it loses no work, only time, possibly hours. Anything in your job
     that measures wall-clock time (a routing watchdog, a timeout) must not count frozen time (section 5.3).
-  - **Pass the thread count on.** The job gets `JOBQ_THREADS`; give it to `DRT_THREADS`, `-j`, `NUM_CORES`.
+  - **Pass the thread count on.** The job gets `JOBQ_THREADS`. LibreLane: `-j`, `DRT_THREADS` and `STA_THREADS`
+    (otherwise its STA and RCX steps run up to 9 corners in parallel on every core, ignoring the queue's CPU set, and
+    their memory adds up); ORFS: `NUM_CORES`; make: `-j`.
   - The queue runs jobs at `nice 19`, idle I/O priority and the lowest CPU weight, and its watchdog kills leftover
     processes and stalled jobs. Do not pin or widen the CPU set (`taskset`, `numactl`): jobs inherit the queue's CPU
     set, which leaves out a faulty core.
@@ -103,7 +105,7 @@ The workstation (24 cores, 62 GB RAM, one RTX 4060 Ti with 8 GB) is shared with 
   job; the daemon is capped at 2 builds × 4 cores. Tool installation is the maintainer's job.
 - **Never edit a running bash script in place.** Bash reads scripts incrementally, so editing one mid-run corrupts
   the run. Write a new file and `mv` it over the old one.
-- **OpenLane runs under `nix develop` with many child processes.** If you must stop one, signal its process group
+- **LibreLane runs under `nix develop` with many child processes.** If you must stop one, signal its process group
   (`kill -TERM -- -PGID`), not single processes.
 - **For AI agents.**
   - `pkill -f` or `pgrep -f` patterns that also match your own command line kill your own shell. Look up the process
@@ -145,12 +147,27 @@ These are the installed default versions (since 2026-10-24, validated on the ref
   directory (`oss-cad-suite-2026-10-24`, `librelane-3.0.16`), and its scripts check `iverilog -V` and the PDK's
   `$PDK_ROOT/sky130A/SOURCES` against the pinned build and warn or stop on a mismatch (which also catches a mix of
   OpenLane 2 with the new PDK).
-- **Do not combine OpenLane 2 with the new PDK.** Hardening works, but OpenLane 2's OpenSTA (`b5f3a02`) crashes
+Folders that were moved keep absolute symlinks to old locations, and many scripts still name
+`/home/yousefzadeha/workspace/...`, which no longer exists. Check links with `find -xtype l` and grep for the old
+path: a broken link to a liberty file makes a macro silently disappear from the power analysis.
+
+**1.1 Moving from OpenLane 2 to LibreLane.** What changed, with the section that has the rule:
+- **Never combine OpenLane 2 with the new PDK.** Hardening works, but OpenLane 2's OpenSTA (`b5f3a02`) crashes
   (segmentation fault) in the SRAM22-conditioned power analysis on SPEF extracted with the new PDK, every time. Use
   OpenLane 2 only with `/media/pdk/sky130A`, and LibreLane with `/media/pdk/sky130_8afc834`.
-- **Moving from OpenLane 2 to LibreLane** changes the numbers. On the reference design (validation, 2026-10-24): 14 %
-  more cells and 32 % more cell area, a larger root clock tree (10 instead of 4 buffers), dynamic power +25 %, total
-  power +0.9 % (an SRAM-leakage-dominated design); SDF errors, SPEF misses and timing stay clean.
+- **The new PDK root has only `sky130_fd_sc_hd`** (and `hvl`); `hdll`, `hs`, `ms`, `ls` and `lp` exist only in the old
+  `/media/pdk/sky130A` (9.4).
+- **Renamed variables.** The old names still work as deprecated aliases, with a warning in the run's `warning.log`:
+  read the warnings of your first run and rename. Examples: `FP_PDN_*` → `PDN_*`, `DECAP_CELL` → `DECAP_CELLS`,
+  `PL_TIME_DRIVEN` → `PL_TIMING_DRIVEN`, `FP_WELLTAP_CELL` → `WELLTAP_CELL`. Variables new in LibreLane
+  (`DRT_ANTENNA_REPAIR_ITERS`, `CTS_APPLY_NDR`) are unknown to OpenLane 2.
+- **Changed defaults:** a second antenna repair after detailed routing (`DRT_ANTENNA_REPAIR_ITERS: 3`; 5.1), a clock
+  non-default routing rule (`CTS_APPLY_NDR: half`; 5.1), timing-driven placement off (`PL_TIMING_DRIVEN: false`).
+  Turning timing-driven placement on made OpenROAD `dcf3613` crash (segmentation fault in
+  `rsz::Rebuffer::fullyRebuffer`) in global placement on one design.
+- **The numbers move.** On the reference design (validation, 2026-10-24): 14 % more cells and 32 % more cell area, a
+  larger root clock tree (10 instead of 4 buffers), dynamic power +25 %, total power +0.9 % (an SRAM-leakage-dominated
+  design); SDF errors, SPEF misses and timing stay clean.
   - The extra cells do not come from synthesis (Yosys 0.62 and 0.46 give 431 and 434 cells) but from OpenROAD
     `dcf3613`'s design repair after placement: it buffers the ports with the delay cell `clkdlybuf4s25_1` (10 µm²,
     twice the `buf_2` the old OpenROAD mostly used), and it hardly resizes gates (1 instance instead of 509), so most
@@ -161,33 +178,26 @@ These are the installed default versions (since 2026-10-24, validated on the ref
     nothing measurable. Port buffers (`DESIGN_REPAIR_BUFFER_INPUT_PORTS`, `_OUTPUT_PORTS`) count in the measured
     power, in proportion to how often the ports toggle.
   - Never mix versions within one set of compared numbers; re-measure the baseline with the new versions.
-- **The routable utilisation can drop with LibreLane.** A flat 28 000-cell adder-tree core that routed at 40 % with
-  OpenLane 2 (global-routing overflow 10 506, detailed routing converged in 14 iterations) had 3.3× the overflow with
-  LibreLane and never converged at 40 % (violations rising to 200 000); it routed at 30 %. Harden every design again
-  with the ladder of 5.3. Timing-driven placement is now `PL_TIMING_DRIVEN` (the old `PL_TIME_DRIVEN` is a deprecated
-  alias) and defaults to false; turning it on made OpenROAD `dcf3613` crash (segmentation fault in
-  `rsz::Rebuffer::fullyRebuffer`) in global placement on that design.
-- **Kept parametrised modules stop LibreLane after synthesis** with "N Unmapped Yosys instances found": its checker
-  counts every `$`-named cell type, and kept sub-modules of a parametrised module are named `$paramod\...`, so each
-  instance counts as unmapped. Set `ERROR_ON_UNMAPPED_CELLS: false` and count the real unmapped cells yourself:
-  `tools/check_metrics.py --synth-stat <run>/…/reports/stat.json` counts the `$` cell types that are not module names.
-- **OpenSTA 2.7** stores activities as densities: the clock-stop trap of section 8.2 does not occur, `-activity` per
-  cycle is converted with the fastest clock (keep one clock, or use `-density`), and `report_activity_annotation`
-  exists.
-
-Folders that were moved keep absolute symlinks to old locations, and many scripts still name
-`/home/yousefzadeha/workspace/...`, which no longer exists. Check links with `find -xtype l` and grep for the old
-path: a broken link to a liberty file makes a macro silently disappear from the power analysis.
+- **The routable utilisation can drop.** A flat 28 000-cell adder-tree core that routed at 40 % with OpenLane 2
+  (global-routing overflow 10 506, detailed routing converged in 14 iterations) had 3.3× the overflow with LibreLane
+  and never converged at 40 % (violations rising to 200 000); it routed at 30 %. Harden every design again with the
+  ladder of 5.3.
+- **Kept parametrised modules stop LibreLane after synthesis** (section 4).
+- **Fixed in LibreLane:** the timing derating (6.1); OpenSTA 2.7 reads SPEF with escaped names (5.4) and stores
+  activities as densities (8.1).
 
 ## 2. Reference tools
 
 `/media/amir/flow_notes/tools/` holds maintained copies of the tools these notes refer to; `tools/README.md` lists
 them. Copy them into your project and record the `flow_notes` commit you copied from (copies drift: two copies of
-the toggle counter on this machine already differ). `tools/reference_flow/` is a complete flow taken from the most
+the toggle counter on this machine already differ). `tools/reference_flow/` is the complete flow of the most
 thoroughly verified design on this machine (hardening, sign-off, gate-level simulation, power, one-session
-measurement; it reproduces the same power to the last digit). Its variable and file names come from that design:
-adapt them. It runs on the default versions (LibreLane 3.0.16), fails a run on any SDF annotation error or lost
-activity (`check_annotation.py`, 8.1), records OpenSTA's group totals, and pins no CPUs under `jobq`. Running several
+measurement; it reproduces the same power to the last digit). It is a reference implementation to read and adapt,
+**not runnable as copied**: it expects that design's environment script (paths, thread count, no CPU pinning under
+`jobq`), SDC, testbench, macro views and submission parser, and its names come from that design. It runs on the
+default versions (LibreLane 3.0.16), fails a measurement on any SDF annotation error or lost activity
+(`check_annotation.py`, 8.1) and records OpenSTA's group totals. Its configuration template keeps two choices of that
+design that differ from 5.1 and 6.2: 0.5 ns hold margins, and sign-off at the typical corner only. Running several
 sessions in one queue job, declare the memory of all their Icarus compilations together.
 
 ## 3. RTL rules for a design you want to measure
@@ -196,7 +206,7 @@ sessions in one queue job, declare the memory of all their Icarus compilations t
   behind a define for synthesis, with a behavioural model for RTL simulation.
   - A clock gated with ordinary logic glitches.
   - The root-clock correction recognises clock gates by cell name: `tools/root_clock_correction.py` knows `dlclkp`
-    only; `tools/root_clock_correction_multipdk.py` also the other PDKs' clock gates.
+    and `sdlclkp`; `tools/root_clock_correction_multipdk.py` also the other PDKs' clock gates.
   - A gate inside a wrapper module gets an escaped name (`\u_x_icg.u_icg`) that Icarus cannot annotate unless you
     rename (section 5.4); a wrapper of this kind caused the only SDF errors of an otherwise clean SoC.
 - **Mind the clock-gate fan-out.** An ICG driving about 80 spread-out sinks got no leaf buffers from CTS: 1.4–2 ns slew
@@ -221,35 +231,43 @@ sessions in one queue job, declare the memory of all their Icarus compilations t
 
 ## 4. Synthesis
 
-- Run synthesis alone first (OpenLane `--to Yosys.Synthesis`). It takes minutes, and gives a cell count and area for
-  sizing the floorplan.
+- Run synthesis alone first (`--to Yosys.Synthesis`). It takes minutes, and gives a cell count and area for sizing
+  the floorplan.
 - Synthesis-only code goes behind a define in `VERILOG_DEFINES`.
+- **Kept parametrised modules stop LibreLane after synthesis** with "N Unmapped Yosys instances found": its checker
+  counts every `$`-named cell type, and kept sub-modules of a parametrised module are named `$paramod\...`, so each
+  instance counts as unmapped. Set `ERROR_ON_UNMAPPED_CELLS: false` and count the real unmapped cells yourself:
+  `tools/check_metrics.py --synth-stat <run>/<synthesis step>/reports/stat.json` (alone, right after synthesis, or
+  together with the run's `final/metrics.json`) counts the `$` cell types that are not module names.
 - After synthesis, compare the flip-flop and latch counts with the RTL.
 - **Count the escaped names in the synthesis netlist** (identifiers starting with `\` that contain `.` or `/`). It is a
   cheap early warning for section 5.4; kept-hierarchy designs had 875–3 851 already after synthesis.
 - Synthesis is deterministic. Comment-only RTL changes give a byte-identical netlist, which is a cheap way to prove
   that an edit does not invalidate earlier measurements.
 - Yosys/ABC area from a synthesis-only probe is cell area only, untimed and without utilisation; do not compare it
-  with OpenLane areas.
+  with the areas of a hardened run.
 
-## 5. Hardening with OpenLane 2
+## 5. Hardening with LibreLane
 
-**5.1 Settings** (`tools/reference_flow/config.template.yaml`). These are **measurement** settings: the flow stops
-after sign-off timing (`--to OpenROAD.STAPostPNR`), so "DRC-clean" means the detailed router's DRC only, with no Magic
-or KLayout DRC, no LVS and no antenna repair. A layout for tapeout needs the opposite of several of them (section 12).
+**5.1 Settings.** These are **measurement** settings: the flow stops after sign-off timing
+(`--to OpenROAD.STAPostPNR`), so "DRC-clean" means the detailed router's DRC only, with no Magic or KLayout DRC, no
+LVS and no antenna repair, and LibreLane's own timing checkers, which come after `STAPostPNR`, never run: acceptance
+is your script's job (5.2). A layout for tapeout needs the opposite of several of them (section 12). The reference
+flow's template (`tools/reference_flow/config.template.yaml`) is an example, with two differences (section 2).
 
 | setting | value | why |
 |---|---|---|
-| `DECAP_CELL: []` | decap-free fill | Decap cells leak: 0.26 µW of a 1.87 µW measurement in one design, 53–81 % of the leakage in others, and 2.1–3.8 µW of 2.9–4.9 µW in register-file and latch cores (energy per bin 27.3 → 12.1 nJ and 21.9 → 7.8 nJ without them). Report the logic's leakage, not the fill's (our measurements; no published source compares them). To fix an existing run, rerun from `OpenROAD.FillInsertion` with `DECAP_CELL: []` and reuse the toggles: only fill changes, but the fill instances get new names, so the toggle file names supply pins of fill that is no longer there; `check_annotation.py` ignores those (since 2026-10-29) and still fails on any lost signal pin. |
-| `ENDCAP_CELL` | `decap_3` (hd default; `ms` and `hs` use `decap_4`) | Endcaps remain decaps even with `DECAP_CELL: []`: 1 200–1 850 cells, about 4–6 nW. Negligible, but "decap-free" is not literal. |
-| `RUN_HEURISTIC_DIODE_INSERTION: false`, `DIODE_ON_PORTS: in` | | Heuristic insertion is off by default in OpenLane 2; keep it off, it broke legalisation at high utilisation. `DIODE_ON_PORTS` defaults to `none`. |
+| `DECAP_CELLS: []` (OpenLane 2: `DECAP_CELL`) | decap-free fill | Decap cells leak: 0.26 µW of a 1.87 µW measurement in one design, 53–81 % of the leakage in others, and 2.1–3.8 µW of 2.9–4.9 µW in register-file and latch cores (energy per bin 27.3 → 12.1 nJ and 21.9 → 7.8 nJ without them). Report the logic's leakage, not the fill's (our measurements; no published source compares them). To fix an existing run, rerun from `OpenROAD.FillInsertion` with `DECAP_CELLS: []` and reuse the toggles: only fill changes, but the fill instances get new names, so the toggle file names supply pins of fill that is no longer there; `check_annotation.py` ignores those (since 2026-10-29) and still fails on any lost signal pin. |
+| `ENDCAP_CELL` | `decap_3` (hd default; `ms` and `hs` use `decap_4`) | Endcaps remain decaps even with `DECAP_CELLS: []`: 1 200–1 850 cells, about 4–6 nW. Negligible, but "decap-free" is not literal. |
+| `RUN_HEURISTIC_DIODE_INSERTION: false`, `DIODE_ON_PORTS: in` | | Heuristic insertion is off by default (OpenLane 2 and LibreLane); keep it off, it broke legalisation at high utilisation. `DIODE_ON_PORTS` defaults to `none`. |
 | `RUN_ANTENNA_REPAIR: false`, `DRT_ANTENNA_REPAIR_ITERS: 0` | | Antenna violations are reported, not gated. Measurement only. In LibreLane, `RUN_ANTENNA_REPAIR` stops only the repair after global routing; a second loop after detailed routing (`DRT_ANTENNA_REPAIR_ITERS`, default 3, active whenever the PDK sets `DIODE_CELL`) checks antennas, inserts diodes and routes again. On a 28 000-cell core it inserted 1 232 diodes after routing had reached 0 violations, and the second routing started at 8 723 violations: double the routing time, cells the measurement does not want, and a risk for convergence. |
 | hold slack margins | the defaults (0.1 ns at placement, 0.05 ns at global routing) for a measurement-only project | Hold must be met at every sign-off corner with full parasitics (6.2); a margin above that is silicon insurance, not correctness. A 0.5 ns overfix cost about 0.6 µW (8 %) in a 7–9 µW design. With a small margin, the final hold check may fail and need a re-hardening; that is the trade-off. Choose and document the margin. |
-| `*_HOLD_MAX_BUFFER_PCT` | 80 (default 50) | Hold buffers are numerous: 15 % of the cells in one design. OpenLane reports them as `design__instance__count__hold_buffer`. |
+| `*_HOLD_MAX_BUFFER_PCT` | 80 (default 50) | Hold buffers are numerous: 15 % of the cells in one design. LibreLane reports them as `design__instance__count__hold_buffer`. |
+| `DESIGN_REPAIR_BUFFER_INPUT_PORTS`, `DESIGN_REPAIR_BUFFER_OUTPUT_PORTS` | the defaults (true); false for very small IP blocks that will sit inside an SoC | One buffer per port (in LibreLane 3.0.16 the delay cell `clkdlybuf4s25_1`, 1.1). They give a stand-alone block defined loads and drives at its pins; a block used inside an SoC needs none. Their power follows the ports' activity: 1 % of the dynamic power of a 700-cell reference design with 122 ports, negligible in large cores. State the choice. |
 | `GRT_ALLOW_CONGESTION` | true (default false) | A congested design reaches detailed routing, where the watchdog (5.3) judges it. Measurement only; false for tapeout. |
 | `CTS_APPLY_NDR` | `none` for designs with many gated clock nets (LibreLane default `half`) | With the default 2×-spacing rule on the upper clock nets, LibreLane 3.0.16's global router aborted with `GRT-0228/0229` ("edge usage exceeds the maximum allowed") on a core with 3 743 gated clock nets, at 50, 30 and 20 % utilisation; `GRT_ALLOW_CONGESTION` does not cover it (OpenROAD issue #11653; fixed by PR #11754, not in our version). OpenLane 2 applied no clock NDR, so `none` also keeps results comparable. |
 | `PL_RESIZER_SETUP_SLACK_MARGIN`, `GRT_RESIZER_SETUP_SLACK_MARGIN` | 0 for latch memories timed without waivers (defaults 0.05 and 0.025 ns) | Latches borrow time and report a setup slack of exactly 0; with a positive margin every weight latch is a "violation" that no move can improve, and `repair_timing` looped 80 000 times in an hour without changing anything. Sign-off still requires slack ≥ 0. |
-| utilisation / density | density = utilisation + 10 %, at most 95 % | This equals OpenLane's default (utilisation + 5 × cell padding + 10, with padding 0 on sky130); with the cell padding of 2 used for SRAM22 floorplans (5.5) the default would be +20. A large ROM core closed at 20 % and not at 30 %; the same netlist at 30 % and 20 % differed by 7 % in power. Small logic cores route at 60 %; latch and register-file cores only at 20–30 % (seven 60 % attempts were hopeless after 7 h). |
+| utilisation / density | density = utilisation + 10 %, at most 95 % | This equals the flow's default (utilisation + 5 × cell padding + 10, with padding 0 on sky130); with the cell padding of 2 used for SRAM22 floorplans (5.5) the default would be +20. A large ROM core closed at 20 % and not at 30 %; the same netlist at 30 % and 20 % differed by 7 % in power. Small logic cores route at 60 %; latch and register-file cores only at 20–30 % (seven 60 % attempts were hopeless after 7 h). LibreLane can need a lower utilisation than OpenLane 2 (1.1). |
 
 **5.2 Accept a run only when all of these hold:**
 - the detailed router's DRC count is 0;
@@ -258,8 +276,8 @@ or KLayout DRC, no LVS and no antenna repair. A layout for tapeout needs the opp
 - sign-off timing had no unmatched SPEF entries;
 - the cell count is within any cap (tap cells excluded, since they grow with the core area).
 
-`tools/check_metrics.py` implements this. OpenLane reports `design__instance__count__stdcell` including taps and
-excluding fill.
+`tools/check_metrics.py` implements this for one corner (`--corner`, default `nom_tt_025C_1v80`): run it for every
+corner you sign off at (6.2). LibreLane reports `design__instance__count__stdcell` including taps and excluding fill.
 
 **5.3 Hardening policy and watchdog.** Detailed routing can run for days without converging: one hardening started by
 hand ran 2.8 days before anyone noticed.
@@ -269,15 +287,19 @@ hand ran 2.8 days before anyone noticed.
   6, 3 000 after 10), when no iteration finishes for 12 h, or after 36 h in total. **Do not count time the job spent
   frozen by the queue** (section 0): the queue freezes the watchdog together with the router, so on resuming the
   watchdog sees hours without an iteration and kills a healthy run (it happened after a 7-hour freeze). Compare the
-  time between two polls with the poll interval and shift the reference times by the difference. Stop it by its process group
-  (start it with `setsid`, signal the group): `pkill -P` misses the grandchildren under `nix develop`.
+  time between two polls with the poll interval and shift the reference times by the difference. Stop the run by its
+  process group (start it with `setsid`, signal the group): `pkill -P` misses the grandchildren under `nix develop`.
 - **Utilisation ladder:** try utilisations from dense to sparse and accept the first attempt that passes 5.2. State
   the steps, and report the accepted utilisation with every energy number, since utilisation changes wire length and
   power.
 - **Log every attempt**, accepted or rejected, with its reason and run time.
 - **In a comparison, harden every design under the same rule**; do not tune utilisation per design by hand.
-- `tools/harden_ladder.sh <config> <work dir> "50 40 30 20"` does all of this for any LibreLane configuration (with an
-  optional own sign-off, `SIGNOFF_CMD`); `tools/reference_flow/harden.sh` does the same for the reference design.
+- `tools/harden_ladder.sh <config> <work dir> "50 40 30 20"` does all of this for any LibreLane configuration. It
+  accepts on LibreLane's worst setup and hold slack over all its STA corners (stricter than LibreLane's own checkers,
+  6.2), plus an optional own sign-off (`SIGNOFF_CMD`). It varies `FP_CORE_UTIL`, which has no effect with
+  `FP_SIZING: absolute` (SRAM22 floorplans, 5.5): there, vary the die size. Its runs go next to the configuration, so
+  give two ladders different configuration directories. `tools/reference_flow/harden.sh` does the same for the
+  reference design.
 
 **5.4 Escaped hierarchical names: the costliest silent error.** Kept hierarchy and generate blocks appear in the routed
 netlist as `\u_rom.u_col_0/_307_`, `\g_ws[9].u_icg` or `\u_demux/_000_`.
@@ -312,21 +334,22 @@ synthesised standard-cell area, keeps 20 µm from core to die edge, and uses a P
 `RT_MAX_LAYER: met5` and cell padding 2; `ERROR_ON_PDN_VIOLATIONS: false` there is safe only because
 `check_metrics.py` gates on the grid instead.
 
-**5.6 OpenLane checks every file named in the configuration at load time**, including the macro GDS, even when the
-flow stops before streamout. A git-ignored GDS makes a fresh checkout unusable.
+**5.6 LibreLane (like OpenLane 2) checks every file named in the configuration at load time**, including the macro GDS,
+even when the flow stops before streamout. A git-ignored GDS makes a fresh checkout unusable.
 
 **5.7 Low-voltage corners (for example 1.28 V).** `ss_n40C_1v28` is the only 1.28 V corner of `sky130_fd_sc_hd`, and
 it is characterised at −40 °C.
-- **Do not harden or repair at it.** OpenROAD repair at `ss_n40C_1v28` grew to 40–45 GB on 0.3–1 M-cell cores,
-  because nearly every net violates that library's slew limits (5 OOM kills). With it as `DEFAULT_CORNER`,
-  timing-driven global placement died after 26 min ("OpenROAD.GlobalPlacement failed unexpectedly"); the workaround
-  was timing-driven placement off (`PL_TIMING_DRIVEN: false`, in OpenLane 2 `PL_TIME_DRIVEN`). It defaults to true
-  in OpenLane 2 and to false in LibreLane. The PDK's
-  `MAX_TRANSITION_CONSTRAINT` is 0.75 ns, which most nets violate at 1.28 V.
+- **Do not harden or repair at it.** OpenROAD repair at `ss_n40C_1v28` grew to 40–45 GB on 0.3–1 M-cell cores
+  (5 OOM kills), because nearly every net violates the flow's slew constraint there: `MAX_TRANSITION_CONSTRAINT` is
+  0.75 ns (the liberty's own limit is 5 ns). With it as `DEFAULT_CORNER`, timing-driven global placement died after
+  26 min ("OpenROAD.GlobalPlacement failed unexpectedly"); the workaround was timing-driven placement off
+  (`PL_TIMING_DRIVEN: false`, the LibreLane default; OpenLane 2's `PL_TIME_DRIVEN` defaults to true).
 - **Harden at the standard corners, then evaluate the routed netlist and SPEF at the low-voltage liberty** with your
-  own STA and power. That is a valid operating point. LibreLane's `PNR_CORNERS` does this inside the flow (optimise at
-  the standard corners, report STA at more). Re-hardening with 1.28 V sign-off cost 7–41 % more energy and up to 2.5×
-  more leakage, because of hold repair against `ff_n40C_1v95`.
+  own STA and power. That is a valid operating point. To have LibreLane report that corner too, add a
+  `*_ss_n40C_1v28` entry to `LIB` and the corner to `STA_CORNERS`, and keep the optimisation at the standard corners
+  with `PNR_CORNERS`, `RSZ_CORNERS` and `CTS_CORNERS`: the resizer and CTS use `STA_CORNERS` unless their own
+  variable is set, so `PNR_CORNERS` alone does not keep them off the low-voltage corner. Re-hardening with 1.28 V
+  sign-off cost 7–41 % more energy and up to 2.5× more leakage, because of hold repair against `ff_n40C_1v95`.
 - Slacks from a liberty swap ignore the IO delays unless you re-create the constraints from the run's SDC variables.
 - Leakage at −40 °C is not comparable with 25 °C numbers (static energy fell about 32× in one design), and some cells
   (for example `xnor2_4`) barely change. State the temperature with the number.
@@ -341,26 +364,30 @@ it is characterised at −40 °C.
   so `get_cells -quiet u_sleep/sleeping` or `get_cells -quiet -hierarchical *sel_r*` match nothing and the constraint
   silently does nothing. Count the objects an exception matches, and fail at zero. Which objects keep the RTL names
   depends on the flow: in LibreLane the nets keep them and the cells do not, in ORFS the cells keep Yosys' register
-  names (`\\u_wmem/lat[39]$_DLATCH_P_`) and the nets do not; an exception that must work in both looks for nets first,
+  names (`\u_wmem/lat[39]$_DLATCH_P_`) and the nets do not; an exception that must work in both looks for nets first,
   then cells.
 - **Timing derating was off in every OpenLane 2 run on sky130.** OpenLane 2.3.10's `base.sdc` computes
-  `set_timing_derate -early [expr 1-[expr $::env(TIME_DERATING_CONSTRAINT) / 100]]`; the PDK sets the constraint to
-  the integer 5, and Tcl's integer division gives 0, so both derate factors were exactly 1.0 instead of 0.95 / 1.05.
-  Slacks were optimistic by up to 5 % of each path delay (late for setup, early for hold), and the resizer repaired
-  correspondingly less. LibreLane divides by `100.0`. Any project SDC copied from OpenLane 2's `base.sdc` must be fixed
-  the same way. The effect on power or slack has not been measured yet.
+  `set_timing_derate -early [expr 1-[expr $::env(TIME_DERATING_CONSTRAINT) / 100]]`; OpenLane 2's PDK
+  compatibility layer sets the constraint to the integer 5, and Tcl's integer division gives 0, so both derate factors
+  were exactly 1.0 instead of 0.95 / 1.05. Slacks were optimistic by up to 5 % of each path delay (late for setup, early
+  for hold), and the resizer repaired correspondingly less. LibreLane divides by `100.0`. Any project SDC copied from
+  OpenLane 2's `base.sdc` must be fixed the same way (in OpenLane 2, `TIME_DERATING_CONSTRAINT: 5.0` in the
+  configuration also fixes it). The effect on power or slack has not been measured yet.
 - Any SDC change means hardening again. Removing a latch waiver added 53 hold buffers to one design and 930 to
   another.
 
 **6.2 Sign-off.** Run OpenSTA yourself on the renamed netlist and SPEF (`tools/signoff_sta.tcl`), with the run's own
 SDC variables (from `runs/<tag>/resolved.json`), not hand-written constraints. Accept on that timing. With escaped
-names, OpenLane's sign-off reported a hold slack of 0.35 ns where the complete parasitics give 0.52 ns; the error can
-go either way. For a flat netlist with zero SPEF misses, OpenLane's sign-off is acceptable.
-- **Which corners.** OpenLane's default `STA_CORNERS` are {nom, min, max} parasitics × {tt_025C_1v80, ss_100C_1v60,
-  ff_n40C_1v95} with `TIMING_VIOLATION_CORNERS: "*"`, so "all 9 corners pass" is the flow default; signing off at the
-  typical corner only is a weaker choice. State your policy with the result, and check every corner at which you
-  report numbers. (Caravel's own timing sign-off, `make caravel-sta`, uses the same 3 × 3 grid; `cf precheck` checks
-  no timing.)
+names, OpenLane 2's sign-off reported a hold slack of 0.35 ns where the complete parasitics give 0.52 ns; the error
+can go either way. For a flat netlist with zero SPEF misses, the flow's own sign-off is acceptable. `signoff_sta.tcl`
+checks one corner (one liberty set, one SPEF) per call.
+- **Which corners.** LibreLane's default `STA_CORNERS` are {nom, min, max} parasitics × {tt_025C_1v80, ss_100C_1v60,
+  ff_n40C_1v95}. Its checkers fail hold at all 9 (`HOLD_VIOLATION_CORNERS: "*"`) but setup only at the typical ones
+  (`TIMING_VIOLATION_CORNERS: "*tt*"`; OpenLane 2 checks both at tt only), and they do not run when the flow stops at
+  `STAPostPNR`. In `final/metrics.json`, `timing__setup__ws` and `timing__hold__ws` are the worst over all 9 corners,
+  `timing__*__ws__corner:<corner>` the per-corner values. Signing off at the typical corner only is a weaker choice.
+  State your policy with the result, and check every corner at which you report numbers. (Caravel's own timing sign-off,
+  `make caravel-sta`, uses the same 3 × 3 grid; `cf precheck` checks no timing.)
 
 **6.3 Reading latch paths.** OpenSTA checks flip-flop-to-latch paths against the latch's opening edge, without time
 borrowing. Those paths can show the smallest setup slack of a design, although the latch stays transparent for half a
@@ -401,7 +428,9 @@ Check clock latency and skew after routing, not only slack.
   6. the netlist;
   7. the testbench.
 
-  `-ginterconnect` makes no difference, since the sanitiser drops all `INTERCONNECT` lines.
+  `-ginterconnect` makes no difference, since the sanitiser drops all `INTERCONNECT` lines. Zero-delay runs compile
+  the functional models instead, with `-DFUNCTIONAL -DUNIT_DELAY=#1` (their flip-flops use `` `UNIT_DELAY ``, which
+  the PDK does not define).
 - **Macros** need a simulation model with the output delay built in for annotated runs (`*_tdout.v`), because their
   bus `IOPATH`s are dropped.
 - **Count annotation errors on every run** (`SDF ERROR`, `Unable to match ModPath`) and **fail the run** if there are
@@ -432,7 +461,8 @@ Check clock latency and skew after routing, not only slack.
   tool, validated by the bit-exact comparison and zero annotation errors, not a timing sign-off.
 - `$sdf_annotate` is O(cells²) in this Icarus (our observation; no published source): hours at 530 000 cells, and
   annotation failed outright on 370–600 k-instance netlists. `tools/icarus_sdf_fast.patch` gives the same toggles
-  much faster.
+  much faster; it is not installed (it adds a separate `$sdf_annotate_fast` task, loaded with `-m`): ask the maintainer
+  through the inbox if you need it.
 - **Workaround for very large netlists:** zero-delay simulation of the whole set, multiplied by a glitch factor
   (annotated over zero-delay energy) measured on an annotated subset or a smaller variant; the sampling error was
   0.4 %. sky130 glitch factors seen: 1.18–1.22 at 5 MHz and 1.13–1.20 at 50 MHz for decoder cores, 1.13–1.93 for
@@ -449,6 +479,11 @@ Check clock latency and skew after routing, not only slack.
 
 **8.1 Activities.**
 - Read the liberty files, the renamed netlist and the SPEF.
+- **Create exactly one clock**, on the clock port, with the period the simulation used, and `set_propagated_clock
+  [all_clocks]`, before reading the activities. OpenSTA 2.7 converts per-cycle `-activity` values with the fastest
+  clock when the command runs (without a clock it stops with an error), and reads the clock-pin internal power of an
+  ideal clock at the ideal clock slew (`set_clock_transition`, default 0), which underestimates it.
+  `tools/power_sta.tcl` does both.
 - Set `set_power_activity -input -activity 0 -duty 0`: OpenSTA's default for unannotated inputs is 0.1 transitions
   per cycle.
 - Then apply the measured per-pin activities, nets last (7.2), and **fail the run if any measured activity was
@@ -456,28 +491,38 @@ Check clock latency and skew after routing, not only slack.
   eye: it has millions of expected names (supply pins, internal signals of the cell and macro models such as
   `notifier`, `D_delayed`, `and0_out_X`). The tool counts as lost only names that are signal pins of the instance's
   cell (liberty `pin`/`bus`, not `pg_pin`), instances missing from the netlist (except their supply pins, which carry
-  no activity), and top-level names. On real designs: 4–6 million names not found, 0 lost, in 5 s.
-- **OpenSTA version.** The default (LibreLane 3.0.16) has OpenSTA 2.7.0, with `report_activity_annotation`.
-  OpenLane 2.3.10 builds OpenSTA commit `b5f3a02` (2024-10-02), which reports "2.6.0"; later commits carry the same
-  label. In it, `report_activity_annotation` does not exist (added 2025-01-15; a script calling
-  it silently checks nothing), `set_clock_sense` is deprecated in favour of `set_sense -type clock`, and
-  `read_power_activities` in favour of `read_vcd`.
+  no activity), and top-level names. On real designs: 4–6 million names not found, 0 lost, in 5 s. It also fails
+  when no pin activity was annotated at all (a wrong scope, 7.4).
+- **OpenSTA version.** The default (LibreLane 3.0.16) has OpenSTA 2.7.0. It stores activities as densities, so the
+  `-stop_propagation` trap at the end of 8.2 does not occur (the root-clock overcharge of 8.2 does); it converts
+  `-activity` per cycle with the fastest clock and ignores `-clock` (keep one clock, or use `-density`, which is per
+  time unit of the liberty, ns on sky130, not per second); and it has `report_activity_annotation`. OpenLane 2.3.10
+  builds OpenSTA commit `b5f3a02` (2024-10-02), which reports "2.6.0"; later commits carry the same label. In it,
+  `report_activity_annotation` does not exist (added 2025-01-15; a script calling it stops with "invalid command
+  name", one that wraps it in `catch` silently checks nothing), `set_clock_sense` is deprecated in favour of
+  `set_sense -type clock`, and `read_power_activities` in favour of `read_vcd`.
 - `set_power_activity -input` applies to every timing root, including tie-cell outputs (OpenSTA issue #539).
 - Without annotation, OpenSTA propagates activity through logic (vectorless); that overestimates (OpenSTA issue
   #333) and models no glitches. Annotate every pin you can.
 
 **8.2 The root clock network is charged at the full clock rate.** Between the clock port and the first clock gate,
 OpenSTA takes the activity from the clock definition, whatever the annotation says.
-- A design that stops its clock between computations (running 0.2–1 % of the time) gets most of its reported power
-  from there: OpenSTA reported 11.73 µW where the true value is 7.40 µW.
+- A design that stops its clock between computations (running 0.2–1 % of the time) gets a large part of its reported
+  power from there: OpenSTA reported 11.73 µW where the true value is 7.40 µW.
 - OpenSTA has no option to set a lower activity on the root clock network (`activity cannot be set on clock ports`);
   the correction below is our own method, not a published one.
-- **Correction** (`tools/root_clock_correction.py`, or `root_clock_correction_multipdk.py`): P = P_STA − (1 − d) ·
-  P_root, where d is the measured clock duty. Buffers and inverters of the root lose internal and switching power;
-  clock gates and other cells clocked directly by the root lose internal power only. The walk from the clock port must
-  continue through hold and delay buffers (`dly*`): only the multi-PDK version does that. OpenSTA warns "activity cannot be set on clock ports"; that is expected.
-- The correction is large: 3–7 µW in the designs measured here, more than half of OpenSTA's total. Report P_STA next
-  to the corrected P.
+- **Correction** (`tools/root_clock_correction.py` for sky130, `root_clock_correction_multipdk.py` for any PDK):
+  P = P_STA − (1 − d) · P_root, where d is the measured clock duty. Buffers and inverters of the root lose internal
+  and switching power; clock gates and other cells clocked directly by the root lose internal power only. The walk
+  from the clock port must continue through clock, hold and delay buffers (`clkdlybuf`, `dlygate`, `dlymetal`); both
+  tools do (the sky130 one since 2026-10-30). OpenSTA warns "activity cannot be set on clock ports"; that is
+  expected.
+  - Known bias: both tools remove (1 − d) of the whole internal power of flip-flops clocked by the root, including the
+    part their data activity causes, so they over-correct slightly for busy root-clocked registers. For clock gates
+    the sky130 tool does the same, while the multi-PDK tool takes the clock-only part from a second power run with all
+    data activities zero (its run B).
+- The correction is large: 3–10 µW in the designs measured here, 37–81 % of OpenSTA's total. Report P_STA next to the
+  corrected P.
 - A design whose clock keeps running does not need it.
 - **Never stop the clock propagation at the clock gates** (`set_clock_sense -stop_propagation` on clock-gate outputs)
   when the activities come from toggle counts. The annotated activities are per clock cycle, and OpenSTA converts them
@@ -555,13 +600,15 @@ the old 0.04 ns slew limit.
   That gives zero power-grid violations. Without it, the macro's supply pins stay unconnected: other grid variants on
   this machine (`met3 met4` + `met2 met3`) gave 268 000 and 547 000 violations, hidden by
   `ERROR_ON_PDN_VIOLATIONS: false`. Power from OpenSTA is not affected, but the layouts fail 5.2.
-- Put the timing liberty in `MACROS` so that paths through the macro are timed.
+- **Put the timing liberties in `MACROS`, one per corner** (`*_tt_025C_1v80`, `*_ss_100C_1v60`, `*_ff_n40C_1v95`),
+  so that paths through the macro are timed at every corner. With one liberty under `"*"`, every corner uses the
+  typical macro timing. `tools/macro_config.py` writes all three since 2026-10-30.
 - **Simulation:** use the functional model for zero-delay runs and the `_tdout` model, with its output delay, for
   annotated runs.
 - **Slew limits.** Macro liberties before 2026-09-09 set a default maximum transition of 0.04 ns (sram22 issue #512;
   fixed upstream in sram22_sky130_macros PR #13, now 0.351 ns, and in the fixed views). With the old value, the data
   outputs' own slew (0.5–0.9 ns) violates it; do not gate on max-slew at the data outputs with old views. The
-  **clock pin** limit (0.35 ns) is different: a slew of 1.2 ns, or 1.7–2.0 ns when a `dlclkp_2` drives the macro clock
+  **clock pin** limit (0.35 ns) is different: a slew of 1.2 ns, or 1.5–2.0 ns when a `dlclkp_2` drives the macro clock
   directly, is a real violation. Buffer the macro clock.
 - **Corners.** Liberties exist for tt 1.8 V 25 °C, ss 1.6 V 100 °C and ff 1.95 V −40 °C only; at any other corner
   (for example `ss_n40C_1v28`, `tt_100C`) the macro becomes a black box.
@@ -596,16 +643,20 @@ one cycle after the last word.
   leakage.
 - **IHP and ASAP7 have state-dependent clock-pin internal power**, so duties must be conditioned on the clock enable
   as for SRAM22 (+27 % on IHP).
-- **ORFS (ASAP7, NanGate45)** writes the same slash names as OpenLane (section 5.4), and its adder techmap gives
+- **ORFS (ASAP7, NanGate45)** writes the same slash names as LibreLane (section 5.4), and its adder techmap gives
   non-equivalent netlists with older Yosys. See `ASAP7_flow_notes.md`.
 - **Check annotation and SPEF matching per PDK.** A flow that is clean on sky130 is not automatically clean elsewhere.
 
 ### 9.4 Other sky130 standard-cell libraries
 
+These libraries exist only in the old PDK root `/media/pdk/sky130A` (OpenLane 2); the default PDK root has only `hd`
+and `hvl` (1.1).
+
 - **`sky130_fd_sc_ms` has no leakage data.** All 376 cells have `cell_leakage_power : 0` and no `leakage_power`
-  groups, so a design in `ms` reports leakage for its macros only, and OpenLane reports `power__leakage__total: 0`.
+  groups, so a design in `ms` reports leakage for its macros only, and the flow reports `power__leakage__total: 0`.
   Its decaps have no leakage either, so 5.1's decap advice changes nothing there. Leakage of an `ms` design needs
-  another library or SPICE; say so with the number. (Our observation in the PDK files; no published source.) `hd`,
+  its `*_pwrlkg.lib` files (three ff corners only: `ff_085C_1v95`, `ff_100C_1v95`, `ff_n40C_1v95`), another library
+  or SPICE; say so with the number. (Our observation in the PDK files; no published source.) `hd`,
   `hdll` and `hs` have per-cell leakage; `ls` has state-dependent groups.
 - **`ms` and `hs` have no `diode_2` liberty** (skywater-pdk issue #358, open), so antenna diodes become black boxes
   (14 500 in one SoC) and their pin capacitance is missing from switching power.
@@ -615,13 +666,16 @@ one cycle after the last word.
 | check | expect |
 |---|---|
 | `ANNOUNCEMENTS.md` read; tool and PDK versions as in section 1 or as announced | yes |
-| the job ran through `jobq` with a realistic `--mem` | yes |
+| the job ran through `jobq` with a realistic `--mem` and a `--time` | yes |
 | escaped names (`\` with `.` or `/`) in the synthesis netlist | 0, or renaming (5.4) planned |
 | `SDF ERROR` / `Unable to match ModPath` lines in the simulator log | 0, and the run fails otherwise |
 | `spef line N, net/instance ... not found` in every OpenSTA log (sign-off and power) | 0 |
 | `Creating black box` in the OpenSTA logs | physical cells only (tap, fill, decap, diode) |
 | every macro liberty read, at the analysed corner | yes |
 | standard-cell leakage in the liberty | non-zero (not `sky130_fd_sc_ms`) |
+| decap cells in the fill | none, or their leakage reported separately (5.1) |
+| cells the flow inserted (hold and port buffers, diodes) | counted and stated with the result (1.1, 5.1) |
+| an SDC copied from OpenLane 2's `base.sdc` | derating divides by `100.0` (6.1) |
 | every SDC exception matched at least one object | yes |
 | latches and flip-flops after synthesis | the numbers the RTL declares |
 | routing DRC errors, power-grid violations | 0, 0 |
@@ -629,7 +683,10 @@ one cycle after the last word.
 | gate-level outputs against RTL outputs | bit-exact over the whole window |
 | testbench stimulus | non-empty, every bin or sample accounted for |
 | measured activities lost (`check_annotation.py`) | 0, and the run fails otherwise |
-| pin activities annotated | more than 0 (a wrong scope prefix silently annotates none), and the run fails otherwise |
+| pin activities annotated | more than 0 (a wrong scope prefix silently annotates none), and the run fails otherwise (`check_annotation.py`) |
+| clocks in the power script | one, propagated, with the simulated period, created before the activities (8.1) |
+| unannotated inputs | `set_power_activity -input -activity 0 -duty 0` (8.1) |
+| SRAM22 power | from the `*_pwr.lib` liberties, with the macro-state correction (9.1) |
 | pin and net activities of the same net | consistent (net written last) |
 | clock duty d used for the root-clock correction | the measured one (clock cycles × period / window) |
 | `set_clock_sense -stop_propagation` in the power script | absent |
@@ -638,7 +695,7 @@ one cycle after the last word.
 
 ## 11. Reproducibility of the numbers (and of trained networks)
 
-- **Pin versions:** OpenLane commit, PDK commit, OSS CAD Suite release, Python packages. Write the tool versions into
+- **Pin versions:** LibreLane version, PDK commit, OSS CAD Suite release, Python packages. Write the tool versions into
   every result file (hardening and measurement summaries alike).
 - **Measure with a script that a second person can rerun**, and keep its outputs together with the commit of the
   scripts that produced them. Results that depend on an untracked clone are not reproducible.
@@ -656,7 +713,8 @@ one cycle after the last word.
 
 These notes describe a measurement flow. A tapeout on a ChipFoundry shuttle needs, at least, the following, and none
 of it is set up or verified on this machine yet:
-- LibreLane (the OpenLane successor named in OpenLane 2.3.10's own README) and the shuttle's `cf` tools
+- the full LibreLane flow, not only up to `STAPostPNR` (Magic and KLayout streamout, DRC, LVS), and the shuttle's `cf`
+  tools
   (`pip install cf-precheck`; `cf init`, `cf setup`, `cf gpio-config`, which is required before precheck);
 - what `cf precheck` checks: XOR against the golden wrapper, top-cell name, metal density, KLayout FEOL/BEOL/off-grid/
   zero-area, spike, illegal cell names, OEB (with the CVC electrical checker), power grid and LVS; Magic DRC is
@@ -673,3 +731,23 @@ of it is set up or verified on this machine yet:
 - shuttle-specific PDK, LibreLane and precheck versions, separate from the measurement flow's pins.
 
 When tapeout work verifies any of this, report it through the inbox; it will get its own section or notes file.
+
+### Version history
+
+| version | date | change |
+|---|---|---|
+| 1.0 | 2026-10-24 | first version, from the most thoroughly verified flow on this machine plus audits of the others |
+| 1.1 | 2026-10-24 | 8.2: stopping clock propagation at the clock gates is wrong (combinational power disappears with toggle-count activities) |
+| 2.0 | 2026-10-24 | section 0 rewritten: all heavy jobs go through the shared `jobq` queue. Corrected SRAM22 clock-pin conditions, clock duty and combinational-share ranges, hold-buffer counts, memory figures. New: low-voltage corners, measurement-only settings, decaps and endcaps, `sky130_fd_sc_ms` without leakage, clock-gate fan-out and SRAM clock slew, Icarus capacity and Verilator, pin/net activity order, register initialisation, five checklist lines |
+| 2.1 | 2026-10-24 | rules checked against tool sources, documentation and issue trackers; sources added; version-specific behaviour of OpenSTA and Icarus; SRAM22 slew limit fixed upstream; 8.8 what a power number must state; precheck contents |
+| 3.0 | 2026-10-24 | only the maintainer edits the notes; findings go to `inbox/` |
+| 4.0 | 2026-10-24 | the notes are general: no references to individual projects. Reference tools now live in `flow_notes/tools/` (section 2); fixed SRAM22 views in `/media/pdk` (9.1); broadcast announcements in `ANNOUNCEMENTS.md` |
+| 5.0 | 2026-10-24 | **new default versions** (section 1): LibreLane 3.0.16 with open_pdks `8afc834`, OSS CAD Suite 2026-10-24; OpenLane 2 kept for earlier numbers, never with the new PDK; validation results |
+| 5.1 | 2026-10-24 | header: which rules are correctness (always) and which are silicon robustness (optional when not taping out); 5.1: default hold margins for measurement-only projects instead of a 0.5 ns overfix |
+| 5.2 | 2026-10-25 | from the inbox: timing derating was off in every OpenLane 2 run on sky130 (6.1); OpenSTA 2.7 reads SPEF with escaped names (5.4, checked); `check_annotation.py` fails a run on lost activities (8.1, section 10); pin versions in scripts (1); reference flow now on the default versions (2) |
+| 5.3 | 2026-10-25 | the queue's guide for agents is now `/media/amir/.jobq/AGENTS.md` (section 0) |
+| 5.4 | 2026-10-28 | from the inbox: hardening policy and `tools/harden_ladder.sh` (5.3); routability can drop with LibreLane, `PL_TIMING_DRIVEN` (1, 5.7); unmapped-cell check with kept parametrised modules (1); `CTS_APPLY_NDR: none` and zero setup margins for latch memories (5.1); exception names in LibreLane and ORFS (6.1); sanitiser drops zero-filled conditional repeats (7.1); Verilator VCD scope and an annotated-pin check (7.4, 10) |
+| 5.5 | 2026-10-29 | from the inbox: LibreLane's antenna repair after detailed routing (`DRT_ANTENNA_REPAIR_ITERS: 0`, 5.1); watchdogs must not count time frozen by the queue (5.3); section 0 follows the queue's current rules (`--time`, freezing, CPU set) |
+| 5.6 | 2026-10-29 | from the inbox: `check_annotation.py` no longer fails a decap-free refill with reused toggles (supply pins of renamed fill), 5.1, 8.1 |
+| 5.7 | 2026-10-29 | from the inbox: `macro_config.py` writes LibreLane's `PDN_*` names (5.5); the larger cell count with LibreLane comes from OpenROAD's design repair (delay cells as port buffers, almost no downsizing) and post-routing diodes, not from Yosys (1) |
+| 6.0 | 2026-10-30 | full review against the installed sources: start-here and silent-error table; history moved to the end; LibreLane migration facts gathered in 1.1, details moved to their sections (unmapped-cell check to 4, OpenSTA 2.7 to 8.1); section 5 is LibreLane. Corrected: sign-off corner defaults and what each tool checks (5.2, 5.3, 6.2); `PNR_CORNERS` alone does not keep the resizer off a low-voltage corner (5.7); the slew limit violated at 1.28 V (5.7); who sets the derating integer (6.1); `report_activity_annotation` in old OpenSTA (8.1); root-clock share, tools and bias (8.2); other sky130 libraries exist only in the old PDK (9.4); the reference flow is not runnable as copied (2). New: port buffers are optional for small IP blocks inside an SoC (5.1, owner's decision); `STA_THREADS` and `-j` (0); one propagated clock with the simulated period before the activities (8.1); `check_annotation.py` fails on zero annotated pins (8.1); macro timing liberties per corner (9.1); zero-delay defines (7.1); seven checklist rows (10) |

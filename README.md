@@ -9,7 +9,7 @@ of `/media/amir` (the maintainer), who also owns the installed tools and PDKs.
 | file | read it |
 |---|---|
 | [ANNOUNCEMENTS.md](ANNOUNCEMENTS.md) | at the start of every measurement campaign: new default versions, changed rules |
-| [skywater130_flow_notes.md](skywater130_flow_notes.md) | before any sky130 work: OpenLane 2 hardening, sign-off, Icarus gate-level simulation with SDF, OpenSTA per-pin power, SRAM22, latch memories, other sky130 libraries and PDKs |
+| [skywater130_flow_notes.md](skywater130_flow_notes.md) | before any sky130 work: LibreLane hardening, sign-off, Icarus gate-level simulation with SDF, OpenSTA per-pin power, SRAM22, latch memories, other sky130 libraries and PDKs |
 | [ASAP7_flow_notes.md](ASAP7_flow_notes.md) | before any ASAP7 work: OpenROAD-flow-scripts, library flavours, corners and units, gate-level simulation, power |
 | [tools/](tools/README.md) | maintained reference tools the notes refer to; copy them, and record the commit you copied |
 | [inbox/](inbox/README.md) | to report a finding, a fix or a disagreement: leave one note per finding |

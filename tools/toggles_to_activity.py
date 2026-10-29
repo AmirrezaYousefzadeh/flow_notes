@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Turn the per-signal toggle counts of flow/tools/vcd_toggles into OpenSTA activity commands (flow/power.sh).
 
-Usage: toggles_to_activity.py <toggles.tsv> --scope tb_neat/u_dut --period-s <clock period in s> -o activity.tcl
+Usage: toggles_to_activity.py <toggles.tsv> --scope tb/u_dut --period-s <clock period in s> -o activity.tcl
                               [--summary summary.json]
 For every variable of the design's scope, one Tcl call that annotates it with
     activity = transitions x clock period / window duration,   duty = high time / window duration,
@@ -61,7 +61,7 @@ def sta_name(component):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("tsv")
-    ap.add_argument("--scope", required=True, help="VCD scope of the design, e.g. tb_neat/u_dut")
+    ap.add_argument("--scope", required=True, help="VCD scope of the design, e.g. tb/u_dut")
     ap.add_argument("--period-s", type=float, required=True, help="clock period in seconds (activity is per clock cycle)")
     ap.add_argument("-o", "--out", required=True)
     ap.add_argument("--summary", default=None)
@@ -108,6 +108,9 @@ def main():
         json.dump(summary, open(a.summary, "w"), indent=1)
     print(f"toggles_to_activity: {len(pins)} pin variables, {len(nets)} top-level variables, {skipped} skipped; "
           f"window {duration * 1e6:.3f} µs = {duration / a.period_s:.1f} cycles")
+    if not pins:
+        examples = [name for name, *_ in rows[:3]]
+        sys.exit(f"toggles_to_activity: no variable under the scope {prefix!r}; the file has names like {examples}")
 
 
 if __name__ == "__main__":
