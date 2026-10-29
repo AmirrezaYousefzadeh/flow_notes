@@ -1,6 +1,6 @@
 # SkyWater 130 nm flow notes: synthesis, hardening, gate-level simulation and power
 
-**Version 5.6, last updated 2026-10-29.** The full history is in "Version history" below.
+**Version 5.7, last updated 2026-10-29.** The full history is in "Version history" below.
 
 Read this before you synthesise, harden or measure anything on sky130 on this machine. It is written for engineers
 and AI agents. Everything here was learned the hard way, in several research designs measured on this machine:
@@ -54,6 +54,7 @@ yourself.
 | 5.4 | 2026-10-28 | from the inbox: hardening policy and `tools/harden_ladder.sh` (5.3); routability can drop with LibreLane, `PL_TIMING_DRIVEN` (1, 5.7); unmapped-cell check with kept parametrised modules (1); `CTS_APPLY_NDR: none` and zero setup margins for latch memories (5.1); exception names in LibreLane and ORFS (6.1); sanitiser drops zero-filled conditional repeats (7.1); Verilator VCD scope and an annotated-pin check (7.4, 10) |
 | 5.5 | 2026-10-29 | from the inbox: LibreLane's antenna repair after detailed routing (`DRT_ANTENNA_REPAIR_ITERS: 0`, 5.1); watchdogs must not count time frozen by the queue (5.3); section 0 follows the queue's current rules (`--time`, freezing, CPU set) |
 | 5.6 | 2026-10-29 | from the inbox: `check_annotation.py` no longer fails a decap-free refill with reused toggles (supply pins of renamed fill), 5.1, 8.1 |
+| 5.7 | 2026-10-29 | from the inbox: `macro_config.py` writes LibreLane's `PDN_*` names (5.5); the larger cell count with LibreLane comes from OpenROAD's design repair (delay cells as port buffers, almost no downsizing) and post-routing diodes, not from Yosys (1) |
 
 Contents:
 0. Ground rules on this machine
@@ -148,9 +149,14 @@ These are the installed default versions (since 2026-10-24, validated on the ref
   (segmentation fault) in the SRAM22-conditioned power analysis on SPEF extracted with the new PDK, every time. Use
   OpenLane 2 only with `/media/pdk/sky130A`, and LibreLane with `/media/pdk/sky130_8afc834`.
 - **Moving from OpenLane 2 to LibreLane** changes the numbers. On the reference design (validation, 2026-10-24): 14 %
-  more cells (Yosys 0.62), a larger root clock tree (10 instead of 4 buffers), dynamic power +25 %, total power +0.9 %
-  (an SRAM-leakage-dominated design); SDF errors, SPEF misses and timing stay clean. Never mix versions within one set
-  of compared numbers; re-measure the baseline with the new versions.
+  more cells and 32 % more cell area, a larger root clock tree (10 instead of 4 buffers), dynamic power +25 %, total
+  power +0.9 % (an SRAM-leakage-dominated design); SDF errors, SPEF misses and timing stay clean. Synthesis is not the
+  cause (Yosys 0.62 and 0.46 give 431 and 434 cells). OpenROAD `dcf3613`'s design repair after placement is: it
+  buffers the ports with the delay cell `clkdlybuf4s25_1` (10 µm², twice a `buf_2`; the old OpenROAD used mostly
+  `buf_2`), and it hardly resizes gates (1 instance instead of 509), so most cells keep the drive strength 2 that
+  Yosys gives them instead of being sized down to 1. The antenna repair after routing adds diodes on top (102 instead
+  of 55; 5.1). Port buffers count in the measured power (`DESIGN_REPAIR_BUFFER_INPUT_PORTS`, `_OUTPUT_PORTS`). Never
+  mix versions within one set of compared numbers; re-measure the baseline with the new versions.
 - **The routable utilisation can drop with LibreLane.** A flat 28 000-cell adder-tree core that routed at 40 % with
   OpenLane 2 (global-routing overflow 10 506, detailed routing converged in 14 iterations) had 3.3× the overflow with
   LibreLane and never converged at 40 % (violations rising to 200 000); it routed at 30 %. Harden every design again
@@ -297,7 +303,8 @@ netlist as `\u_rom.u_col_0/_307_`, `\g_ws[9].u_icg` or `\u_demux/_000_`.
 
 **5.5 SRAM22 designs.** See section 9.1: absolute floorplan, macro in a column with a 20 µm halo, power-grid hook,
 timing liberty in the `MACROS` section, GDS present. `tools/macro_config.py` sizes a roughly square die from the
-synthesised standard-cell area, keeps 20 µm from core to die edge, and uses a PDN pitch of 80 and spacing of 15,
+synthesised standard-cell area, keeps 20 µm from core to die edge, and uses a PDN pitch of 80 and spacing of 15
+(LibreLane names `PDN_*`; the OpenLane 2 names `FP_PDN_*` are deprecated aliases),
 `RT_MAX_LAYER: met5` and cell padding 2; `ERROR_ON_PDN_VIOLATIONS: false` there is safe only because
 `check_metrics.py` gates on the grid instead.
 

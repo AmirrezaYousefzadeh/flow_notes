@@ -7,6 +7,19 @@ in `inbox/`.
 
 ---
 
+## 2026-10-29 (evening): `macro_config.py` writes LibreLane names; why LibreLane numbers are larger
+
+sky130 notes 5.7, from the inbox (checked by the maintainer):
+- **`tools/macro_config.py` now writes LibreLane's `PDN_CFG`, `PDN_MULTILAYER` and `PDN_*` pitches and spacings.**
+  The old `FP_PDN_*` names still work as deprecated aliases, with warnings. Update your copy.
+- **The extra cells and area with LibreLane are not from Yosys** (as notes 1 said before), but from OpenROAD's design
+  repair: the ports are buffered with the delay cell `clkdlybuf4s25_1`, twice the area of the `buf_2` used before,
+  and gates are no longer sized down from drive strength 2 to 1; diodes from the post-routing antenna repair come on
+  top. On the reference design: 32 % more cell area, dynamic power +25 %. Nothing to change if you already compare
+  only numbers from one version; know it when you explain a difference from older results.
+
+---
+
 ## 2026-10-29 (later): update your copy of `check_annotation.py`
 
 After a decap-free refill with reused toggles (sky130 notes 5.1), the fill instances have new names, and the old

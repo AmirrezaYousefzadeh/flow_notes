@@ -17,7 +17,7 @@ Summaries of each run are kept in `results/`; work directories are deleted after
 | quantity | old (OpenLane 2.3.10, open_pdks c6d73a35, Icarus 13) | new (LibreLane 3.0.16, open_pdks 8afc834, Icarus 14) |
 |---|---|---|
 | hardening | accepted at 30 %, DRC 0, power grid 0 | accepted at 30 %, DRC 0, power grid 0 |
-| cells / cell area | 727 / 6 332 µm² | 828 / 8 356 µm² (Yosys 0.62 vs 0.46) |
+| cells / cell area | 727 / 6 332 µm² | 828 / 8 356 µm² (OpenROAD's design repair, see below) |
 | setup / hold slack (own sign-off, TT) | 118.04 / 0.95 ns | 117.31 / 1.13 ns |
 | antenna-violating nets | 11 | 0 |
 | unmatched SPEF entries, SDF errors | 0, 0 | 0, 0 |
@@ -29,6 +29,13 @@ Summaries of each run are kept in `results/`; work directories are deleted after
 | **total power** | **2.4334 µW** | **2.4560 µW (+0.9 %)** |
 
 - The old set reproduces itself to the last digit (2.433446750552603 µW in two runs).
+- **Where the extra cells come from** (checked 2026-10-29 step by step on an equivalent LibreLane run of the same
+  design, 836 cells): not synthesis (431 cells with Yosys 0.62, 434 with 0.46), but OpenROAD's design repair after
+  global placement. The new OpenROAD buffers the ports with the delay cell `clkdlybuf4s25_1` (121 of 122 port
+  buffers, 10 µm² each; the old one used mostly `buf_2`, 5 µm²) and resizes 1 instance instead of 509, so cells keep Yosys's drive strength 2
+  instead of being sized down to 1 (167 instead of 397 drive-1 cells after the repair). LibreLane's antenna repair
+  after detailed routing adds 102 diodes (OpenLane 2: 55); that run predates `DRT_ANTENNA_REPAIR_ITERS: 0`, and so
+  does this validation, whose new column includes those diodes. The next validation uses the setting.
 - **OpenLane 2.3.10 with the new PDK fails:** hardening is identical to the old set, but its OpenSTA (`b5f3a02`)
   crashes with a segmentation fault in the SRAM22-conditioned power run, reproducibly (the liberty files are
   identical; the SPEF extracted with the new PDK's RC data differs). The same OpenSTA also crashed on the new

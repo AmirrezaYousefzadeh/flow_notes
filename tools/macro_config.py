@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Add SRAM22 macro instances to the OpenLane configuration of a submission (flow/harden.sh).
+"""Add SRAM22 macro instances to the LibreLane configuration of a submission (flow/harden.sh).
 
 Usage: macro_config.py <config.yaml> <macros dir> <cell> <instance> [<instance> ...] [--synthesis-only]
                        [--std-area <µm²> --utilisation <percent>]
@@ -51,9 +51,9 @@ def main():
               f"    lib:\n      \"*\": [\"{mdir}/{a.cell}_tt_025C_1v80.lib\"]",
               "VDD_NETS: [VPWR]", "GND_NETS: [VGND]", "PDN_MACRO_CONNECTIONS:"]
     lines += [f"  - {inst} VPWR VGND vdd vss" for inst in a.instances]
-    lines += [f"FP_PDN_CFG: \"{Path(a.macros_dir).resolve().parent}/pdn_cfg_sram22.tcl\"",
-              "FP_PDN_MULTILAYER: true", "FP_PDN_VPITCH: 80", "FP_PDN_HPITCH: 80",
-              "FP_PDN_VSPACING: 15", "FP_PDN_HSPACING: 15",
+    lines += [f"PDN_CFG: \"{Path(a.macros_dir).resolve().parent}/pdn_cfg_sram22.tcl\"",
+              "PDN_MULTILAYER: true", "PDN_VPITCH: 80", "PDN_HPITCH: 80",
+              "PDN_VSPACING: 15", "PDN_HSPACING: 15",
               "ERROR_ON_PDN_VIOLATIONS: false     # checked by flow/tools/check_metrics.py, with the reason in harden.json",
               "RT_MAX_LAYER: met5", "GPL_CELL_PADDING: 2", "DPL_CELL_PADDING: 2"]
     die = ""
