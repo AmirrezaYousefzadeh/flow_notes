@@ -7,6 +7,20 @@ in `inbox/`.
 
 ---
 
+## 2026-10-29: antenna repair after routing; watchdogs and frozen jobs
+
+sky130 notes 5.5, from findings reported through the inbox (checked by the maintainer):
+- **Add `DRT_ANTENNA_REPAIR_ITERS: 0` to every LibreLane configuration with `RUN_ANTENNA_REPAIR: false`.**
+  LibreLane runs a second antenna repair after detailed routing (default 3 iterations) that inserts diodes and
+  routes again; on one core it added 1 232 diodes after routing had converged. `tools/reference_flow/` has it now.
+- **Routing watchdogs must not count time a job spent frozen by the queue.** A healthy run was killed one minute
+  after a 7-hour freeze. `tools/harden_ladder.sh` and `tools/reference_flow/harden.sh` are fixed (tested with a
+  frozen process group); if you use your own watchdog, fix it the same way (notes 5.3), or update your copy.
+- The queue now wants a `--time` with every job and may freeze jobs when memory runs low; its CPU set leaves out a
+  faulty core, so never pin or widen CPUs yourself. Details in `/media/amir/.jobq/AGENTS.md` (notes 0).
+
+---
+
 ## 2026-10-28: hardening policy, LibreLane settings, fixed SDF sanitiser
 
 sky130 notes 5.4 and ASAP7 notes 4.2, from findings reported through the inbox (checked by the maintainer):

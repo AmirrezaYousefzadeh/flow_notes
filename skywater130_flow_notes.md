@@ -1,6 +1,6 @@
 # SkyWater 130 nm flow notes: synthesis, hardening, gate-level simulation and power
 
-**Version 5.4, last updated 2026-10-24.** The full history is in "Version history" below.
+**Version 5.5, last updated 2026-10-29.** The full history is in "Version history" below.
 
 Read this before you synthesise, harden or measure anything on sky130 on this machine. It is written for engineers
 and AI agents. Everything here was learned the hard way, in several research designs measured on this machine:
@@ -52,6 +52,7 @@ yourself.
 | 5.2 | 2026-10-25 | from the inbox: timing derating was off in every OpenLane 2 run on sky130 (6.1); OpenSTA 2.7 reads SPEF with escaped names (5.4, checked); `check_annotation.py` fails a run on lost activities (8.1, section 10); pin versions in scripts (1); reference flow now on the default versions (2) |
 | 5.3 | 2026-10-25 | the queue's guide for agents is now `/media/amir/.jobq/AGENTS.md` (section 0) |
 | 5.4 | 2026-10-28 | from the inbox: hardening policy and `tools/harden_ladder.sh` (5.3); routability can drop with LibreLane, `PL_TIMING_DRIVEN` (1, 5.7); unmapped-cell check with kept parametrised modules (1); `CTS_APPLY_NDR: none` and zero setup margins for latch memories (5.1); exception names in LibreLane and ORFS (6.1); sanitiser drops zero-filled conditional repeats (7.1); Verilator VCD scope and an annotated-pin check (7.4, 10) |
+| 5.5 | 2026-10-29 | from the inbox: LibreLane's antenna repair after detailed routing (`DRT_ANTENNA_REPAIR_ITERS: 0`, 5.1); watchdogs must not count time frozen by the queue (5.3); section 0 follows the queue's current rules (`--time`, freezing, CPU set) |
 
 Contents:
 0. Ground rules on this machine
@@ -77,15 +78,18 @@ The workstation (24 cores, 62 GB RAM, one RTX 4060 Ti with 8 GB) is shared with 
 - **Every heavy job goes through the shared queue `jobq`** (`/media/amir/.jobq/jobq.py`, guide in
   `/media/amir/.jobq/AGENTS.md`). "Heavy" means longer than a few minutes, more than about 2 GB of RAM, more than 2
   threads, or the GPU. Never start such a job with `&` or `nohup`.
-  - `jobq add --name N --threads T --mem <peak GB> [--gpu MB] [--stall-min N] -- 'command'`; then
-    `jobq status | log N | wait N | cancel N`. Use `--high` only when the owner asks for it.
-  - **Declare a realistic peak memory.** A job starts only when `--mem` + 3 GB is free; its RAM is capped at
-    max(1.4 × mem, mem + 4) GB and it swaps above that. Only queue jobs may swap; anything outside the queue is
-    OOM-killed instead.
-  - **Pass the thread count on.** The job gets `JOBQ_THREADS`; give it to `ROUTING_CORES`, `-j`, `NUM_CORES`.
+  - `jobq add --name N --threads T --mem <peak GB> --time <45m|6h|2d> [--gpu MB] [--stall-min N] -- 'command'`; then
+    `jobq status | log N | wait N | cancel N`. Use `--high` only when the owner asks for it. The memory rules and
+    the scheduling are in `AGENTS.md`; read it, they change.
+  - **Declare a realistic peak memory and always a `--time`** (from an earlier or smaller run, rounded up): both decide
+    when the job can start.
+  - **Your job may be frozen.** When free memory runs low, the queue freezes a whole job (it stops where it is and its
+    memory goes to swap) and resumes it later: it loses no work, only time, possibly hours. Anything in your job
+    that measures wall-clock time (a routing watchdog, a timeout) must not count frozen time (section 5.3).
+  - **Pass the thread count on.** The job gets `JOBQ_THREADS`; give it to `DRT_THREADS`, `-j`, `NUM_CORES`.
   - The queue runs jobs at `nice 19`, idle I/O priority and the lowest CPU weight, and its watchdog kills leftover
-    processes and stalled jobs. Do not pin jobs to fixed CPUs (`taskset`): concurrent queue jobs would pile onto the
-    same cores.
+    processes and stalled jobs. Do not pin or widen the CPU set (`taskset`, `numactl`): jobs inherit the queue's CPU
+    set, which leaves out a faulty core.
   - If the daemon is down, tell the owner; do not start jobs outside the queue. Never cancel other people's jobs.
 - **Memory figures for declaring `--mem`.**
   - Icarus compilation of a 100 000-cell SDF-annotated netlist: about 10 GB. Six at once triggered the out-of-memory
@@ -228,7 +232,7 @@ or KLayout DRC, no LVS and no antenna repair. A layout for tapeout needs the opp
 | `DECAP_CELL: []` | decap-free fill | Decap cells leak: 0.26 µW of a 1.87 µW measurement in one design, 53–81 % of the leakage in others, and 2.1–3.8 µW of 2.9–4.9 µW in register-file and latch cores (energy per bin 27.3 → 12.1 nJ and 21.9 → 7.8 nJ without them). Report the logic's leakage, not the fill's (our measurements; no published source compares them). To fix an existing run, rerun from `OpenROAD.FillInsertion` with `DECAP_CELL: []` and reuse the toggles. |
 | `ENDCAP_CELL` | `decap_3` (hd default; `ms` and `hs` use `decap_4`) | Endcaps remain decaps even with `DECAP_CELL: []`: 1 200–1 850 cells, about 4–6 nW. Negligible, but "decap-free" is not literal. |
 | `RUN_HEURISTIC_DIODE_INSERTION: false`, `DIODE_ON_PORTS: in` | | Heuristic insertion is off by default in OpenLane 2; keep it off, it broke legalisation at high utilisation. `DIODE_ON_PORTS` defaults to `none`. |
-| `RUN_ANTENNA_REPAIR: false` | | Antenna violations are reported, not gated. Measurement only. |
+| `RUN_ANTENNA_REPAIR: false`, `DRT_ANTENNA_REPAIR_ITERS: 0` | | Antenna violations are reported, not gated. Measurement only. In LibreLane, `RUN_ANTENNA_REPAIR` stops only the repair after global routing; a second loop after detailed routing (`DRT_ANTENNA_REPAIR_ITERS`, default 3, active whenever the PDK sets `DIODE_CELL`) checks antennas, inserts diodes and routes again. On a 28 000-cell core it inserted 1 232 diodes after routing had reached 0 violations, and the second routing started at 8 723 violations: double the routing time, cells the measurement does not want, and a risk for convergence. |
 | hold slack margins | the defaults (0.1 ns at placement, 0.05 ns at global routing) for a measurement-only project | Hold must be met at every sign-off corner with full parasitics (6.2); a margin above that is silicon insurance, not correctness. A 0.5 ns overfix cost about 0.6 µW (8 %) in a 7–9 µW design. With a small margin, the final hold check may fail and need a re-hardening; that is the trade-off. Choose and document the margin. |
 | `*_HOLD_MAX_BUFFER_PCT` | 80 (default 50) | Hold buffers are numerous: 15 % of the cells in one design. OpenLane reports them as `design__instance__count__hold_buffer`. |
 | `GRT_ALLOW_CONGESTION` | true (default false) | A congested design reaches detailed routing, where the watchdog (5.3) judges it. Measurement only; false for tapeout. |
@@ -251,7 +255,10 @@ hand ran 2.8 days before anyone noticed.
 - **Never start a hardening by hand.** Run every hardening, one-off experiments included, through a script under
   `jobq` with the routing watchdog active.
 - **Watchdog:** stop the run when the violation count stays high (more than 500 000 after 3 iterations, 20 000 after
-  6, 3 000 after 10), when no iteration finishes for 12 h, or after 36 h in total. Stop it by its process group
+  6, 3 000 after 10), when no iteration finishes for 12 h, or after 36 h in total. **Do not count time the job spent
+  frozen by the queue** (section 0): the queue freezes the watchdog together with the router, so on resuming the
+  watchdog sees hours without an iteration and kills a healthy run (it happened after a 7-hour freeze). Compare the
+  time between two polls with the poll interval and shift the reference times by the difference. Stop it by its process group
   (start it with `setsid`, signal the group): `pkill -P` misses the grandchildren under `nix develop`.
 - **Utilisation ladder:** try utilisations from dense to sparse and accept the first attempt that passes 5.2. State
   the steps, and report the accepted utilisation with every energy number, since utilisation changes wire length and
