@@ -15,8 +15,10 @@ sky130 notes 5.7, from the inbox (checked by the maintainer):
 - **The extra cells and area with LibreLane are not from Yosys** (as notes 1 said before), but from OpenROAD's design
   repair: the ports are buffered with the delay cell `clkdlybuf4s25_1`, twice the area of the `buf_2` used before,
   and gates are no longer sized down from drive strength 2 to 1; diodes from the post-routing antenna repair come on
-  top. On the reference design: 32 % more cell area, dynamic power +25 %. Nothing to change if you already compare
-  only numbers from one version; know it when you explain a difference from older results.
+  top (32 % more cell area on the reference design). Its +25 % dynamic power comes from the larger root clock tree,
+  more delay cells and the larger logic cells in about equal parts; the port buffers are about 1 % of the dynamic
+  power there. Nothing to change if you already compare only numbers from one version; know it when you explain a
+  difference from older results.
 
 ---
 

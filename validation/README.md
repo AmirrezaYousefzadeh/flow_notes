@@ -36,6 +36,9 @@ Summaries of each run are kept in `results/`; work directories are deleted after
   instead of being sized down to 1 (167 instead of 397 drive-1 cells after the repair). LibreLane's antenna repair
   after detailed routing adds 102 diodes (OpenLane 2: 55); that run predates `DRT_ANTENNA_REPAIR_ITERS: 0`, and so
   does this validation, whose new column includes those diodes. The next validation uses the setting.
+- **Where the extra dynamic power comes from** (+22 nW; per-instance power reports of the old and new runs, after the
+  root-clock correction): the root clock tree with 10 instead of 4 buffers +9 nW, delay cells +7.5 nW, logic at drive
+  strength 2 +7 nW, port buffers +1 nW (1.3 of 112 nW), other buffers −3 nW, diodes about 0.
 - **OpenLane 2.3.10 with the new PDK fails:** hardening is identical to the old set, but its OpenSTA (`b5f3a02`)
   crashes with a segmentation fault in the SRAM22-conditioned power run, reproducibly (the liberty files are
   identical; the SPEF extracted with the new PDK's RC data differs). The same OpenSTA also crashed on the new

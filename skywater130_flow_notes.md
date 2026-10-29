@@ -150,13 +150,17 @@ These are the installed default versions (since 2026-10-24, validated on the ref
   OpenLane 2 only with `/media/pdk/sky130A`, and LibreLane with `/media/pdk/sky130_8afc834`.
 - **Moving from OpenLane 2 to LibreLane** changes the numbers. On the reference design (validation, 2026-10-24): 14 %
   more cells and 32 % more cell area, a larger root clock tree (10 instead of 4 buffers), dynamic power +25 %, total
-  power +0.9 % (an SRAM-leakage-dominated design); SDF errors, SPEF misses and timing stay clean. Synthesis is not the
-  cause (Yosys 0.62 and 0.46 give 431 and 434 cells). OpenROAD `dcf3613`'s design repair after placement is: it
-  buffers the ports with the delay cell `clkdlybuf4s25_1` (10 µm², twice a `buf_2`; the old OpenROAD used mostly
-  `buf_2`), and it hardly resizes gates (1 instance instead of 509), so most cells keep the drive strength 2 that
-  Yosys gives them instead of being sized down to 1. The antenna repair after routing adds diodes on top (102 instead
-  of 55; 5.1). Port buffers count in the measured power (`DESIGN_REPAIR_BUFFER_INPUT_PORTS`, `_OUTPUT_PORTS`). Never
-  mix versions within one set of compared numbers; re-measure the baseline with the new versions.
+  power +0.9 % (an SRAM-leakage-dominated design); SDF errors, SPEF misses and timing stay clean.
+  - The extra cells do not come from synthesis (Yosys 0.62 and 0.46 give 431 and 434 cells) but from OpenROAD
+    `dcf3613`'s design repair after placement: it buffers the ports with the delay cell `clkdlybuf4s25_1` (10 µm²,
+    twice the `buf_2` the old OpenROAD mostly used), and it hardly resizes gates (1 instance instead of 509), so most
+    cells keep the drive strength 2 that Yosys gives them instead of being sized down to 1. The antenna repair after
+    routing adds diodes (102 instead of 55; 5.1).
+  - The extra dynamic power (+22 nW) splits into the larger root clock tree (+9 nW after the root-clock correction),
+    more delay cells (+7.5 nW), logic at drive strength 2 (+7 nW) and the port buffers (+1 nW); the diodes add
+    nothing measurable. Port buffers (`DESIGN_REPAIR_BUFFER_INPUT_PORTS`, `_OUTPUT_PORTS`) count in the measured
+    power, in proportion to how often the ports toggle.
+  - Never mix versions within one set of compared numbers; re-measure the baseline with the new versions.
 - **The routable utilisation can drop with LibreLane.** A flat 28 000-cell adder-tree core that routed at 40 % with
   OpenLane 2 (global-routing overflow 10 506, detailed routing converged in 14 iterations) had 3.3× the overflow with
   LibreLane and never converged at 40 % (violations rising to 200 000); it routed at 30 %. Harden every design again
