@@ -53,7 +53,7 @@ SDF_ERRORS=$(grep -c -E "SDF ERROR|Unable to match ModPath" sim.log || true)
 PASSED=0; sim_ok sim.log && PASSED=1        # PASS, no FAIL/MISMATCH, no real-time overrun
 BITEXACT=null
 if [[ -n "${GOLDEN:-}" ]]; then BITEXACT=false; cmp -s "$OUT/$OUT_FILE" "$GOLDEN" && BITEXACT=true; fi
-echo "   SDF errors $SDF_ERRORS, testbench pass $PASSED, bit-exact against RTL $BITEXACT ($SIM_MIN min)"
+echo "   SDF errors $SDF_ERRORS, testbench pass $PASSED, output equals the RTL golden: ${BITEXACT/null/no golden, self-checking testbench} ($SIM_MIN min)"
 [[ "$SDF_ERRORS" -eq 0 && "$PASSED" -eq 1 && "$BITEXACT" != false ]] ||
   { grep -E "^FAIL|^MISMATCH|SDF ERROR" sim.log | head -n 5; echo "$NAME: the simulation is not valid: not measured"; exit 1; }
 

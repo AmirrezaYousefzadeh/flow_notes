@@ -16,7 +16,8 @@ origin: BCI_paper, commit cc819ec (2026-10-13); the copied tracked files are unm
   LibreLane settings (design.sh CONFIG_EXTRA) from synthesis/bmi_snn_lmem2g/config_5mhz_used.yaml (OpenLane 2, run
   bmi_snn_lmem2g_5m_u30h2): kept CTS_DISTANCE_BETWEEN_BUFFERS 150 and CTS_CLK_MAX_WIRE_LENGTH 300 (the project's fix
   for the write-clock domain's 16 ns latency and hold failures, results/run_log_round10.md); added
-  PL/GRT_RESIZER_SETUP_SLACK_MARGIN 0 (latch core without waivers, notes 5.1). Not taken: the hold margins of 1.0 ns,
+  PL/GRT_RESIZER_SETUP_SLACK_MARGIN 0 (latch core without waivers, notes 5.1) and LINTER_ERROR_ON_LATCH false (the
+  project ran with RUN_LINTER false; the default stops LibreLane at the lint checker on the intended latch rows). Not taken: the hold margins of 1.0 ns,
   HOLD_MAX_BUFFER_PCT 100, DIODE_ON_PORTS in, PL_TARGET_DENSITY_PCT, the include directory and the general settings that
   the flow writes itself.
 Testbench defines as in the project's sim/measure_rt.sh -> sim/run_gls_stream.sh (sdf/func, md0); THETA/K1/K2 of

@@ -88,8 +88,9 @@ for f in sorted(glob.glob(f"{h}/orfs/logs/asap7/{nick}/base/*.json")) + sorted(g
 so = {c: json.load(open(f"{h}/signoff_u{util}_{c}.json")) for c in ("TT", "SS", "FF")}
 attempts = [dict(zip(("utilisation_pct", "minutes", "verdict"), l.rstrip("\n").split("\t"))) for l in open(f"{h}/attempts.tsv")]
 summary = {"accepted_utilisation_pct": util, "attempts": attempts,
-           "cells": rep.get("finish__design__instance__count__stdcell", 0) - rep.get("finish__design__instance__count__class:fill_cell", 0)
-                    - rep.get("finish__design__instance__count__class:tap_cell", 0),
+           # ORFS counts fill outside the standard cells and taps inside them
+           "cells": rep.get("finish__design__instance__count__stdcell", 0) - rep.get("finish__design__instance__count__class:tap_cell", 0),
+           "tap_cells": rep.get("finish__design__instance__count__class:tap_cell", 0),
            "cell_area_um2": rep.get("finish__design__instance__area__stdcell"),
            "drc_errors": rep.get("detailedroute__route__drc_errors"),
            "max_slew_violations": rep.get("finish__timing__drv__max_slew"),
@@ -134,7 +135,7 @@ SDF_ERRORS=$(grep -c -E "SDF ERROR|Unable to match ModPath" sim.log || true)
 PASSED=0; sim_ok sim.log && PASSED=1        # PASS, no FAIL/MISMATCH, no real-time overrun
 BITEXACT=null
 if [[ -n "${GOLDEN:-}" ]]; then BITEXACT=false; cmp -s "$M/$OUT_FILE" "$GOLDEN" && BITEXACT=true; fi
-echo "   SDF errors $SDF_ERRORS, testbench pass $PASSED, bit-exact against RTL $BITEXACT ($SIM_MIN min)"
+echo "   SDF errors $SDF_ERRORS, testbench pass $PASSED, output equals the RTL golden: ${BITEXACT/null/no golden, self-checking testbench} ($SIM_MIN min)"
 [[ "$SDF_ERRORS" -eq 0 && "$PASSED" -eq 1 && "$BITEXACT" != false ]] ||
   { grep -E "^FAIL|^MISMATCH|SDF ERROR" sim.log | head -n 5; echo "$NAME: the simulation is not valid: not measured"; exit 1; }
 

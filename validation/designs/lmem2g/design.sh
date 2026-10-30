@@ -16,8 +16,10 @@ UTILS="30 20"
 MACRO_CELL=""
 MACRO_INSTANCES=""
 # latches borrow time and report a setup slack of exactly 0: no positive setup margin (sky130 notes 5.1); clock-tree
-# buffers on long clock wires, which the project needed to close hold on the write-clock domain (16 ns latency without)
-CONFIG_EXTRA="PL_RESIZER_SETUP_SLACK_MARGIN: 0
+# buffers on long clock wires, which the project needed to close hold on the write-clock domain (16 ns latency without);
+# the latch rows are intended (written as always @* if (gate) ...), so Verilator's LATCH is not a lint error (notes 9.2)
+CONFIG_EXTRA="LINTER_ERROR_ON_LATCH: false
+PL_RESIZER_SETUP_SLACK_MARGIN: 0
 GRT_RESIZER_SETUP_SLACK_MARGIN: 0
 CTS_DISTANCE_BETWEEN_BUFFERS: 150
 CTS_CLK_MAX_WIRE_LENGTH: 300"

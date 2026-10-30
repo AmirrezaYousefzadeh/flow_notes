@@ -1,6 +1,6 @@
 # SkyWater 130 nm flow notes: synthesis, hardening, gate-level simulation and power
 
-**Version 6.3, last updated 2026-10-30.** The full history is in "Version history" at the end.
+**Version 6.4, last updated 2026-10-30.** The full history is in "Version history" at the end.
 
 Read this before you synthesise, harden or measure anything on sky130 on this machine. It is written for engineers
 and AI agents. Everything here was learned the hard way, in several research designs measured on this machine:
@@ -652,6 +652,10 @@ one cycle after the last word.
   data pins hides every latch timing problem, including those of a design that writes latches while it computes.
   Timing all of them cost 53 and 930 extra hold buffers in two designs, and both met timing.
 - **Hold buffers at latch inputs** cost area and power in large latch memories. Measure them.
+- **LibreLane stops at the lint checker on latch rows written as `always @* if (gate) q = d;`.** Its Verilator lint
+  runs with `--Werror-LATCH` (`LINTER_ERROR_ON_LATCH`, default true; OpenLane 2 had the same default). For intended
+  latch memories set `LINTER_ERROR_ON_LATCH: false`, which keeps the other lint errors, rather than `RUN_LINTER: false`;
+  the latch count after synthesis (4) catches unintended latches.
 - **Gate latch rows with `dlclkp` instantiated directly** (glitch-free enable, plain name, recognised by the root-clock
   correction).
 - **Gate-level simulation does not check latch timing** (timing checks are dropped). STA and the bit-exact comparison
@@ -784,3 +788,4 @@ When tapeout work verifies any of this, report it through the inbox; it will get
 | 6.1 | 2026-10-30 | owner's decision: no port buffers and no port diodes for a measurement, both on for a tapeout (5.1, 12). From the inbox: why LibreLane keeps drive-2 cells (the PDK's synthesis list plus OpenROAD `dcf3613` no longer sizing down) and buffers with delay cells, upstream issues, candidate remedies with first numbers (1.1); +20 % / +40 % energy on a logic-dominated core (1.1); drive-2 leakage at 1.28 V (5.7) |
 | 6.2 | 2026-10-30 | owner's decision: exclude the delay cells `clkdlybuf4s*` from synthesis and repair (5.1, 1.1) |
 | 6.3 | 2026-10-30 | from the inbox: LibreLane's extra buffers come from `repair_design` alone (synthesis buffering off in both versions), CTS defaults changed; first real-core result of remedy A (1.1) |
+| 6.4 | 2026-10-30 | from the reference validation: `LINTER_ERROR_ON_LATCH: false` for intended latch memories (9.2) |
