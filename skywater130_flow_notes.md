@@ -1,6 +1,6 @@
 # SkyWater 130 nm flow notes: synthesis, hardening, gate-level simulation and power
 
-**Version 6.2, last updated 2026-10-30.** The full history is in "Version history" at the end.
+**Version 6.3, last updated 2026-10-30.** The full history is in "Version history" at the end.
 
 Read this before you synthesise, harden or measure anything on sky130 on this machine. It is written for engineers
 and AI agents. Everything here was learned the hard way, in several research designs measured on this machine:
@@ -185,7 +185,11 @@ path: a broken link to a liberty file makes a macro silently disappear from the 
   - **On a logic-dominated core the total moves by tens of per cent.** A flat 34 000-cell core without macros (same
     RTL, SDC, utilisation and test set, decap-free, root-clock correction on both): energy per inference +20 % at tt
     (static +7 %, dynamic +34 %) and +40 % at `ss_n40C_1v28` (static +79 %, 5.7); cells +10 %, repair buffers 1 460 →
-    4 636 (1 384 of them `clkdlybuf4s25_1` on internal nets), glitch factor 1.30 → 1.41.
+    4 636 (1 384 of them `clkdlybuf4s25_1` on internal nets), glitch factor 1.30 → 1.41. Synthesis buffering is off in
+    both (`SYNTH_ABC_BUFFERING: false`): the buffers come from `repair_design` alone (OpenLane 2 resized 7 159 cells and
+    used fewer, larger buffers; LibreLane resized 138 and inserted 4 605). The clock tree's dynamic power rose 39 %;
+    the CTS defaults changed too (sink clustering 25 sinks / 50 µm in OpenLane 2, LibreLane's own defaults now;
+    `CTS_APPLY_NDR: half`).
   - Never mix versions within one set of compared numbers, not even approximately; re-measure the baseline with the
     new versions.
   - Remedies: (B) `EXTRA_EXCLUDED_CELLS: ["sky130_fd_sc_hd__clkdlybuf4s*"]` keeps the delay cells out of synthesis
@@ -194,7 +198,10 @@ path: a broken link to a liberty file makes a macro silently disappear from the 
     PDK list minus its `_1` entries of the `a*`, `o*`, `and`, `or`, `nand`, `nor`, `xor2`, `xnor2`, `inv` and `df*`
     cells) lets Yosys map to drive 1 and the repair size up only where needed. On LibreLane's 289-cell `spm` example
     (all runs DRC-clean and timing-clean): B −2 % cell area; A −9 % cell area and −9 % estimated power, but twice the
-    hold delay cells (33 → 63); A and B −12 % area. Set B with a list in the configuration file, not with
+    hold delay cells (33 → 63); A and B −12 % area. On a 34 000-cell core, A gave a drive-1 netlist that the repair
+    kept (it resized 423 cells, up where needed: `dfxtp_1` 3 466, `dfxtp_2` 167), with a few more slew violations
+    (1 657 against 1 406) and as many buffers as before (4 416, of them 1 457 delay cells, which B removes); energy
+    still to be measured. Set B with a list in the configuration file, not with
     `--override-config` (the quotes reach Tcl and stop the flow). Until the notes decide on A, harden every compared
     design with the same settings and state them.
 - **The routable utilisation can drop.** A flat 28 000-cell adder-tree core that routed at 40 % with OpenLane 2
@@ -776,3 +783,4 @@ When tapeout work verifies any of this, report it through the inbox; it will get
 | 6.0 | 2026-10-30 | full review against the installed sources: start-here and silent-error table; history moved to the end; LibreLane migration facts gathered in 1.1, details moved to their sections (unmapped-cell check to 4, OpenSTA 2.7 to 8.1); section 5 is LibreLane. Corrected: sign-off corner defaults and what each tool checks (5.2, 5.3, 6.2); `PNR_CORNERS` alone does not keep the resizer off a low-voltage corner (5.7); the slew limit violated at 1.28 V (5.7); who sets the derating integer (6.1); `report_activity_annotation` in old OpenSTA (8.1); root-clock share, tools and bias (8.2); other sky130 libraries exist only in the old PDK (9.4); the reference flow is not runnable as copied (2). New: port buffers are optional for small IP blocks inside an SoC (5.1, owner's decision); `STA_THREADS` and `-j` (0); one propagated clock with the simulated period before the activities (8.1); `check_annotation.py` fails on zero annotated pins (8.1); macro timing liberties per corner (9.1); zero-delay defines (7.1); seven checklist rows (10) |
 | 6.1 | 2026-10-30 | owner's decision: no port buffers and no port diodes for a measurement, both on for a tapeout (5.1, 12). From the inbox: why LibreLane keeps drive-2 cells (the PDK's synthesis list plus OpenROAD `dcf3613` no longer sizing down) and buffers with delay cells, upstream issues, candidate remedies with first numbers (1.1); +20 % / +40 % energy on a logic-dominated core (1.1); drive-2 leakage at 1.28 V (5.7) |
 | 6.2 | 2026-10-30 | owner's decision: exclude the delay cells `clkdlybuf4s*` from synthesis and repair (5.1, 1.1) |
+| 6.3 | 2026-10-30 | from the inbox: LibreLane's extra buffers come from `repair_design` alone (synthesis buffering off in both versions), CTS defaults changed; first real-core result of remedy A (1.1) |
