@@ -1,0 +1,7 @@
+origin: NEAT_Competition, commit a954447 (2026-10-30)
+  rtl/sram_probe.v, rtl/neat_clkgate.v   <- flow/macros/test/rtl/
+  rtl/neat_weights.hex                   <- flow/macros/test/rtl/gen/indy_20160630_01/
+  tb/tb_neat.v                           <- tb/
+  stim/test_w200.hex                     <- data/streams/indy_20160630_01/
+  sdc/core.sdc                           <- flow/neat_decoder.sdc
+The macro-test example of the NEAT BMI challenge (Apache-2.0 example of the organisers).

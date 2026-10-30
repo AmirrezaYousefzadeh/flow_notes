@@ -1,22 +1,37 @@
 # Validation of tool and PDK versions
 
-Every new set of default versions is validated here before it is announced.
+Every new set of default versions is validated here before it is announced (upgrade policy, `UPSTREAM.md`): the
+reference designs are hardened and measured with the new set, and their numbers are compared with the stored set.
+The same tools must reproduce a stored set to the last digit; a new set moves the numbers, and the report explains
+every difference.
 
-**Reference design (sky130):** the SRAM22 macro test design of the most thoroughly verified measurement flow on this
-machine: a linear read-out with one SRAM22 macro, 727 cells, 200 ns clock, 200-bin SDF-annotated gate-level
-simulation, per-pin OpenSTA power with the root-clock and macro-state corrections. `neat_ref/` holds a private copy of
-that flow (not in git; origin commit in `neat_ref.COMMIT`), patched only so that the tool versions can be chosen by
-environment variable (`OL_MODULE`, `OSSCAD`). Run `run_validation.sh old|new|ol2newpdk` through `jobq`.
+## The reference set (since 2026-10-30)
 
-**ASAP7:** ORFS's own `gcd` example in RVT and SRAM-Vt at TT (`run_orfs_check.sh RVT|SRAM`).
+| design | kind | what it exercises | simulation |
+|---|---|---|---|
+| `designs/sram_probe` | sky130, one SRAM22 macro, 432 cells after synthesis | macro floorplan and power grid, SRAM22 state correction, root-clock correction | SDF, 200 bins |
+| `designs/lmem2g` | sky130 latch-memory core, 50 688 latches in 97 rows, ~158 k cells, no latch waivers | routability and scaling, hold at latch inputs, per-row clock gates | zero delay, 20 bins |
+| `designs/snn2_d` | sky130 adder-tree core, ~34 k cells, 155 clock gates | routing congestion (it failed at 40 % with LibreLane), adder trees, glitches | SDF, 25 samples |
+| `designs/min32_asap7` | ASAP7 SRAM-Vt core, ~18 k cells | ORFS at TT, own hold check, 1 ps Icarus models, ICG delays, multi-PDK root-clock correction | SDF, 50 bins |
 
-Summaries of each run are kept in `results/`; work directories are deleted after a validation.
+Each directory is a frozen copy (RTL, testbench, stimulus, expected outputs, constraints) with `ORIGIN` (project,
+commit, source of every file and every change) and `design.sh` (the contract of `flow/README.md`). The flow in
+`flow/` uses only the maintained tools and the notes' settings: LibreLane with the measurement settings of sky130 5.1,
+the hardening ladder, a 9-corner own sign-off, bit-exact gate-level simulation, OpenSTA per-pin power with the
+corrections; ORFS at TT for ASAP7.
 
-**Before the next validation** (review of 2026-10-30): `neat_ref/` is the copy of 2026-10-24, written for OpenLane 2.
-It still uses the `FP_PDN_*` and `DECAP_CELL` names, lacks `DRT_ANTENNA_REPAIR_ITERS: 0` and the annotation checks,
-and its SDC divides the derating by an integer. Replace it by the generic, runnable reference set the upgrade policy
-asks for (`UPSTREAM.md`: a small SRAM22 design, a large latch-memory core, a dense adder-tree core, an ASAP7 core).
-`run_validation.sh` now gives the copy the job's own CPU set instead of pinning it to CPUs 0..n-1.
+**Run:** `flow/validate.sh <label>` (one `jobq` job per design, work in `work_<label>/`, not in git), then
+`flow/compare.py work_<label> results/<stored set>`; store an accepted set with `--store` into `results/<set>/`.
+Budget: the SRAM22 design minutes, the ASAP7 core under an hour, the adder-tree and latch cores several hours each.
+
+The first stored set (the current defaults, LibreLane 3.0.16, open_pdks `8afc834`, ORFS `ef2cb37`, OSS CAD Suite
+2026-10-24) is being produced; until then the results below are the reference.
+
+## Previous procedure
+
+Until 2026-10-29 only the SRAM22 design was validated, with a private copy of its project's flow (`neat_ref/`, not in
+git; `run_validation.sh`) and ORFS's own `gcd` example (`run_orfs_check.sh`). Its summaries are in `results/old`,
+`results/new`, `results/openlane2_newpdk` and `results/orfs_gcd_*`.
 
 ## 2026-10-24: LibreLane 3.0.16, open_pdks 8afc834, OSS CAD Suite 2026-10-24, ORFS ef2cb37
 

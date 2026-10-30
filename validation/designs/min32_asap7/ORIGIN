@@ -1,0 +1,23 @@
+origin: BCI_paper, commit cc819ec (2026-10-13); the copied tracked files are unmodified against it; copied 2026-10-30
+  rtl/bmi_snn_min32.v           <- rtl/gen/pdk/asap7sram/bmi_snn_min32.v (sw/gen_variant.py --pdk retarget; last commit
+                                   f39b165, 2026-09-19). The SRAM-Vt copy: it differs from rtl/gen/pdk/asap7/ only in the
+                                   clock-gate cell (ICGx1_ASAP7_75t_SRAM instead of _R), and it is the file of the project's
+                                   SRAM-Vt run bmi_snn_min32_5m_sram_u60 (synthesis/run_orfs5.sh asap7 min32 sram)
+  tb/tb_bmi_snn.v               <- sim/tb_bmi_snn.v (last commit 1aca256, 2026-10-09)
+  stim/weights.hex, stats.json  <- sim/vecfull_h32_indy_20160630_01/ (git-ignored vector set, generated 2026-09-19; weights
+                                   unused by the hardwired core, read by the testbench)
+  stim/stream_w50.hex           <- sim/vecfull_h32_indy_20160630_01/stream.hex, cut after the 50th tick (`awk '{print}
+                                   /^ff$/{n++; if(n==50) exit}'`): the first 50 bins, 206 tokens (156 events + 50 ticks)
+  stim/expect_w50.hex           <- sim/vecfull_h32_indy_20160630_01/expect.hex, first 100 lines (y0, y1 of 50 bins)
+                                   (the first 50 bins and the weights are identical in sim/vec_h32_indy_20160630_01/)
+  sdc/constraint.sdc            <- /media/pdk/OpenROAD-flow-scripts/flow/designs/asap7/bmi_snn_min32_5m_sram/constraint.sdc,
+                                   written by the project's synthesis/run_orfs5.sh (e575eb1, 2026-09-23); unchanged (ps,
+                                   200000; reset and mode_dense false paths; no derate, no propagated clock)
+  ORFS settings (design.sh ORFS_EXTRA) from that run's config_used.mk: ADDER_MAP_FILE :=, ABC_AREA = 1,
+  SYNTH_MEMORY_MAX_BITS = 65536. Not taken: REMOVE_ABC_BUFFERS = 1 (deprecated in ef2cb37), DETAILED_ROUTE_ARGS (aborts
+  with the LibreLane binaries, ASAP7 notes 6.1), PLACE_DENSITY_LB_ADDON 0.10 and TNS_END_PERCENT 100 (standard settings
+  of notes 6.1), ASAP7_USESRAM = 1 (ORFS_VT=SRAM), the names, paths and utilisation.
+Testbench defines as in the project's sim/measure_rt_pdk.sh (real-time, kit runs) -> sim/run_gls_stream.sh: -DIDLE_GAP=0,
+no weight load (hardwired core); THETA/K1/K2 of stats.json (256, 4, 4) equal the RTL defaults, which -DGLS uses. The
+project ran its ASAP7 measurements of this core back to back (sim/measure_pdk5.sh); the real-time script was not run for
+min32, so there is no project real-time number to compare with.

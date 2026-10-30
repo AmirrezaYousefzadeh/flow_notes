@@ -1,0 +1,21 @@
+{
+ "session": "indy_20160630_01",
+ "test_block_start": 258365,
+ "slice": [
+  258365,
+  365809
+ ],
+ "n_bins": 107444,
+ "input_events": 524200,
+ "events_per_bin_mean": 4.87882059491456,
+ "events_per_bin_max": 29,
+ "hidden_spikes_total": 95362,
+ "hidden_spikes_per_bin_mean": 0.8875507240981348,
+ "H": 32,
+ "theta": 256,
+ "k1": 4,
+ "k2": 4,
+ "slice_r2": 0.5174717977930801,
+ "predicted_cycles_event_mode": 14391044,
+ "predicted_cycles_dense_mode": 181352452
+}

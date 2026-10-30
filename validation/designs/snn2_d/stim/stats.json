@@ -1,0 +1,17 @@
+{
+ "model": "results/models/d_s1",
+ "dataset": "shd",
+ "arch": "d",
+ "readout": "max",
+ "samples": [
+  0,
+  25
+ ],
+ "frames": 1500,
+ "events": 205799,
+ "events_per_frame_mean": 137.19933333333333,
+ "events_per_frame_max": 1320,
+ "slice_accuracy": 76.0,
+ "n_out": 20,
+ "cycles_estimate": 218324
+}
