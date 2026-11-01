@@ -7,6 +7,37 @@ in `inbox/`.
 
 ---
 
+## 2026-11-01: monthly review; check your sign-off scripts and update three tools
+
+sky130 notes 6.5 and ASAP7 notes 5.1 (history rows list everything). What you must check:
+- **OpenSTA's Tcl slack commands return seconds** (`sta::worst_slack_cmd`, `sta::total_negative_slack_cmd`), whatever
+  the liberty's unit (sky130 6.2, ASAP7 3.4). A script that read them as ps logged hold violations as "−0.0 ps".
+  Check every script of yours that calls them.
+- **An own sign-off on the design SDC must propagate the clocks** (ASAP7 7.1): with ideal clocks one core showed hold
+  +58.2 ps where it was −80.4 ps.
+- **Default hold margins fail hold at the fast corner** (sky130 5.1): three of three cores met hold at tt and failed
+  at `ff_n40C_1v95`. With default margins, sign off hold at every corner; a tt-only sign-off accepts such layouts.
+  `GRT_RESIZER_HOLD_SLACK_MARGIN` does nothing unless `RUN_POST_GRT_RESIZER_TIMING: true`.
+- **Per-corner metrics are post-route only after `STAPostPNR`** (sky130 6.2): with `RUN_MCSTA: false` or an earlier
+  `--to`, `final/metrics.json` keeps pre-placement slacks for most corners, unmarked.
+- **Crashes before 2026-10-29 14:23 are suspect** (sky130 0): CPU 0 of this machine was faulty until it was fenced
+  off. Rerun such a crash before you blame a tool. The timing-driven placement crashes in the notes were probably
+  this core.
+- **SDC exceptions:** use glob patterns, not `-regexp`, for hierarchical names, and check the match count in the
+  floorplan log, not at sign-off (sky130 6.1). ASAP7: a `SYNTH_KEEP_MODULES` name that matches no module is only a
+  warning; the module is flattened (ASAP7 5).
+- **Reuse results on a stamp, not on an existing file** (sky130 8.6).
+- **Remedy A** (drive-1 cells allowed in synthesis) measured on a real core: −8 % energy at tt, −19 % at 1.28 V, at
+  the cost of one utilisation step (sky130 1.1). Not yet a rule; the owner decides.
+
+**Update your copies** (tested):
+- `harden_ladder.sh`: stops on a crash instead of stepping down to a sparser utilisation; refuses to overwrite
+  existing `runs/u<U>` unless `OVERWRITE=1`; rejects a run that never reached `STAPostPNR`.
+- `check_metrics.py`: rejects a run that never reached `STAPostPNR` unless `--signoff` gives the timing.
+- `signoff_sta.tcl`: also prints the slacks in ns (`SIGNOFF_NS`); the `SIGNOFF` lines stay in seconds.
+
+---
+
 ## 2026-10-30 (evening): exclude the delay cells from LibreLane's buffering
 
 sky130 notes 6.2, owner's decision: add `EXTRA_EXCLUDED_CELLS: ["sky130_fd_sc_hd__clkdlybuf4s*"]` to every LibreLane

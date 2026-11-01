@@ -3,6 +3,8 @@
 # (flow/tools/legal_names.py): the nets inside sub-modules would be timed without their wires. This script reads the
 # renamed netlist and SPEF instead, so that every net has its parasitics.
 # Env: LIB_SC (liberty files), LIB_MACROS (optional), NETLIST, SPEF, TOP, SDC (and the variables it reads), OUT
+# Output: "SIGNOFF <key> <value>" in seconds (OpenSTA's Tcl slack commands return SI seconds whatever the liberty's
+# time unit) and "SIGNOFF_NS <key> <value>" in ns; a script that reads the first as ns or ps is off by 1e9 or 1e12.
 foreach l $::env(LIB_SC) { read_liberty $l }
 if {[info exists ::env(LIB_MACROS)]} { foreach l $::env(LIB_MACROS) { read_liberty $l } }
 read_verilog $::env(NETLIST)
@@ -23,4 +25,8 @@ puts "SIGNOFF setup_ws [sta::worst_slack_cmd max]"
 puts "SIGNOFF hold_ws [sta::worst_slack_cmd min]"
 puts "SIGNOFF setup_tns [sta::total_negative_slack_cmd max]"
 puts "SIGNOFF hold_tns [sta::total_negative_slack_cmd min]"
+puts "SIGNOFF_NS setup_ws [expr {[sta::worst_slack_cmd max] * 1e9}]"
+puts "SIGNOFF_NS hold_ws [expr {[sta::worst_slack_cmd min] * 1e9}]"
+puts "SIGNOFF_NS setup_tns [expr {[sta::total_negative_slack_cmd max] * 1e9}]"
+puts "SIGNOFF_NS hold_tns [expr {[sta::total_negative_slack_cmd min] * 1e9}]"
 exit

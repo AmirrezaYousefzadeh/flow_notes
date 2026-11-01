@@ -8,8 +8,13 @@
 #         <work dir>/logs/librelane_u<U>.log per attempt. Exit status 0 if a run was accepted, 1 otherwise.
 # Acceptance (from the run's final/metrics.json): route__drc_errors 0, timing__setup__ws >= 0 and timing__hold__ws >= 0
 # (LibreLane's worst over all its STA corners, setup included: stricter than its own checkers, which check setup at
-# the typical corners only and do not run with --to OpenROAD.STAPostPNR), design__power_grid_violation__count 0. If SIGNOFF_CMD is set, it is
+# the typical corners only and do not run with --to OpenROAD.STAPostPNR), design__power_grid_violation__count 0, and a
+# STAPostPNR step in the run (without it, RUN_MCSTA: false or an earlier LAST_STEP, the slacks are pre-placement
+# values; LibreLane issue #1040). If SIGNOFF_CMD is set, it is
 # run as `$SIGNOFF_CMD <run dir>` after those checks and must exit 0 as well (your own sign-off, notes 6.2).
+# A crashed attempt (a signal such as "Signal 11 received", "Segmentation fault", "Illegal instruction", "stack
+# smashing") says nothing about routability: the ladder stops there instead of trying a sparser utilisation.
+# Existing runs with the ladder's tags (runs/u<U> beside the configuration) are never overwritten unless OVERWRITE=1.
 # Environment (defaults in brackets):
 #   LIBRELANE [/media/hardware_design_tools/librelane]   PDK_ROOT [/media/pdk/sky130_8afc834]   PDK [sky130A]
 #   DENSITY_ADD [10]: PL_TARGET_DENSITY_PCT = utilisation + DENSITY_ADD, at most 95
@@ -65,13 +70,15 @@ watchdog() {       # <run dir>: stop the active attempt when detailed routing ca
 }
 
 check() {          # <run dir>: prints "pass" or the reason for rejecting the run
-  python3 - "$1/final/metrics.json" <<'PY'
-import json, sys
+  python3 - "$1/final/metrics.json" "$1" <<'PY'
+import glob, json, os, sys
 try:
     m = json.load(open(sys.argv[1]))
 except (OSError, ValueError):
     print("no final metrics (the flow stopped before sign-off)"); sys.exit()
 problems = []
+if not glob.glob(os.path.join(sys.argv[2], "*-openroad-stapostpnr*")):
+    problems.append("no STAPostPNR step (RUN_MCSTA off or LAST_STEP earlier): slacks are pre-placement values")
 def get(key):
     if key not in m:
         problems.append(f"{key} missing")
@@ -86,7 +93,13 @@ print("; ".join(problems) if problems else "pass")
 PY
 }
 
+if [[ "${OVERWRITE:-0}" != 1 ]]; then
+  for U in $UTILS; do
+    [[ -e "$(dirname "$CFG")/runs/u$U" ]] && { echo "run $(dirname "$CFG")/runs/u$U exists; move it away or set OVERWRITE=1"; exit 2; }
+  done
+fi
 ATTEMPTS="$WORK/ladder_attempts.tsv"; : > "$ATTEMPTS"
+CRASHED=""
 rm -f "$WORK/runs/accepted"
 ACCEPTED=""
 for U in $UTILS; do
@@ -108,6 +121,10 @@ for U in $UTILS; do
     VERDICT="stopped by the watchdog: $STOPPED"
   else
     VERDICT=$(check "$RUN")
+    CRASH=$(grep -m1 -aoE 'Signal (4|6|7|8|11) received|Segmentation fault|Illegal instruction|stack smashing detected|Bus error' "$LOG" || true)
+    if [[ "$VERDICT" != pass && -n "$CRASH" ]]; then
+      VERDICT="crashed ($CRASH): not a routability result, ladder stopped; rerun this utilisation"; CRASHED=$U
+    fi
     if [[ "$VERDICT" == pass && -n "${SIGNOFF_CMD:-}" ]]; then
       $SIGNOFF_CMD "$RUN" > "$WORK/logs/signoff_$TAG.log" 2>&1 || VERDICT="own sign-off failed (logs/signoff_$TAG.log)"
     fi
@@ -118,6 +135,7 @@ for U in $UTILS; do
   if [[ "$VERDICT" == pass ]]; then
     mkdir -p "$WORK/runs"; ln -sfn "$RUN" "$WORK/runs/accepted"; ACCEPTED=$U; break
   fi
+  [[ -n "$CRASHED" ]] && break
 done
 
 python3 - "$ATTEMPTS" "$WORK/ladder.json" "$CFG" "$PDK_ROOT" "$LIBRELANE" "${ACCEPTED:-}" <<'PY'
@@ -136,4 +154,5 @@ json.dump(summary, open(out, "w"), indent=1)
 PY
 rm -f "$ATTEMPTS"
 [[ -n "$ACCEPTED" ]] && { echo "accepted at $ACCEPTED %: $WORK/runs/accepted"; exit 0; }
+[[ -n "$CRASHED" ]] && { echo "crashed at $CRASHED % (see $WORK/logs/librelane_u$CRASHED.log); see $WORK/ladder.json"; exit 1; }
 echo "no utilisation passed; see $WORK/ladder.json"; exit 1

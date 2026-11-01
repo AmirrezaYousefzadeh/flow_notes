@@ -1,6 +1,6 @@
 # ASAP7 flow notes: synthesis, place and route with ORFS, gate-level simulation and power
 
-**Version 5.0, last updated 2026-10-30.** The full history is in "Version history" at the end.
+**Version 5.1, last updated 2026-11-01.** The full history is in "Version history" at the end.
 
 Read this before you synthesise, place and route or measure anything on ASAP7 (the predictive 7 nm library) on this
 machine. It is written for engineers and AI agents. It collects what was learned measuring several neural-network
@@ -40,6 +40,9 @@ checklist in section 11.
 | clock gates instantiated through `OPENROAD_CLKGATE` without `-D OPENROAD_CLKGATE` | every gate becomes a wire | 4 |
 | the adder map with an old Yosys | outputs off by ±2 | 5 |
 | hold not checked (old checkout) or broken after detailed routing | 187 hold violations in an accepted run | 7.2 |
+| an own sign-off on the design SDC without `set_propagated_clock` | hold +58.2 ps where it is −80.4 ps | 7.1 |
+| OpenSTA's Tcl slack commands read as ps (they return seconds) | hold violations logged as −0.0 ps | 3.4 |
+| a `SYNTH_KEEP_MODULES` name that matches no module | the module flattened, only a warning | 5 |
 | Icarus reading ps as ns, rounding to 10 ps, a zero ICG rise delay | stalled runs; glitch factors off | 8.1 |
 | escaped names from `keep_hierarchy` in the SPEF | 4.87 million parasitic entries dropped | 9.4 |
 | leakage taken from an idle window instead of the measured one | 23–25 % too high | 9.5 |
@@ -112,8 +115,9 @@ nix ... develop --accept-flake-config /media/hardware_design_tools/librelane -c 
 (`FILL_CELLS` as shown for SRAM-Vt, to keep decaps out; for RVT use the `_R` fillers.)
 
 - **`QT_QPA_PLATFORM=offscreen` is required.** The ORFS Makefile sets it only when `DISPLAY` is empty; under ssh or
-  VS Code `DISPLAY` is set but unusable (ORFS issue #3034). Without it `6_report` aborts on a Qt plugin error
-  (signal 6, rc=2) even when the route is clean, and an acceptance script rejects a good run.
+  VS Code `DISPLAY` is set but unusable (ORFS issue #3034; its fix, PR #3944 after `ef2cb37`, skips the images only
+  when `DISPLAY` is empty). Without it `6_report` aborts on a Qt plugin error (signal 6, rc=2) even when the route
+  is clean, and an acceptance script rejects a good run.
 - **SRAM-Vt** is selected with `ASAP7_USE_VT=SRAM`. Check that the `read_liberty` lines of
   `logs/asap7/<design>/<variant>/1_2_yosys.log` and `2_1_floorplan.log` name `*_SRAMVT_<TT|FF|SS>_*` at the corner you
   asked for (this ORFS copies no liberties into `objects/`), and that the netlist has no cell of another flavour
@@ -198,6 +202,7 @@ ratios (4.4×, 9.7×, 10.1× between neighbours) agree with the off-currents of 
 | liberty | time **ps**, capacitance fF, leakage **pW**, current mA |
 | SDC (ORFS and OpenSTA) | **ps**: 200000 for 5 MHz, 20000 for 50 MHz |
 | ORFS metrics (`*.json`: slack, period) | ps; multiply by 1e-3 for ns |
+| OpenSTA Tcl `sta::worst_slack_cmd`, `sta::total_negative_slack_cmd` | **seconds**, whatever the liberty says; multiply by 1e12 for ps |
 | SPEF | `T_UNIT 1 NS`, `C_UNIT 1 PF` |
 | OpenSTA `write_sdf` | `(TIMESCALE 1ps)` |
 | vendor Verilog models | `` `timescale 1ns/10ps `` in every module (use 1 ps copies, 8.1) |
@@ -207,6 +212,8 @@ ratios (4.4×, 9.7×, 10.1× between neighbours) agree with the off-currents of 
   of 0.0315 mW and the total 2.47 mW instead of 0.148 mW. Compare with ORFS's own power report to catch it.
 - A result collector once printed ASAP7 slacks in ps as if they were ns. Convert in one place, and name variables by
   their unit.
+- A sign-off script that read OpenSTA's slack commands as ps logged hold slacks of −4.02 and −30.3 ps as "−0.0 ps"
+  and computed every hold-retry margin from zero (sky130 notes 6.2).
 
 ## 4. RTL rules for ASAP7
 
@@ -246,6 +253,9 @@ Settings that every ASAP7 config needs:
   `finish__design__instance__count__stdcell` includes the taps; fill (and the SRAM-Vt decaps, 6.3) is
   `class:fill_cell`.
 - **Compare the synthesis netlist with the RTL bit for bit** before placing anything.
+- **A `SYNTH_KEEP_MODULES` name that matches no module is only a Yosys warning** in `ef2cb37`: synthesis goes on with
+  that module flattened (a misspelt or renamed module). The numbers change without an error; upstream ORFS stops on
+  it since commit `0bc1a7d` (2026-10-27). Check that every module you keep appears as a module in `1_synth.v`.
 
 ## 6. Place and route with ORFS
 
@@ -259,7 +269,7 @@ Settings that every ASAP7 config needs:
 | `DETAILED_ROUTE_END_ITERATION` | 40 to 64 | with a violation watchdog, as in sky130 notes 5.3. Leave `DETAILED_ROUTE_ARGS` unset: it replaces the default arguments, and with the LibreLane binaries `-bottom_routing_layer`/`-top_routing_layer` in it abort with `DRT-0509`/`DRT-0510` (deprecated; the platform sets the layers itself) |
 | `NUM_CORES` | `$JOBQ_THREADS` | default: every CPU (section 0) |
 | `CORNER` | set it explicitly | default BC = FF (3.3) |
-| SDC | no `set_propagated_clock` | ORFS adds it after CTS |
+| SDC | no `set_propagated_clock` | ORFS adds it after CTS; your own sign-off on the same SDC must add it (7.1) |
 
 **6.2 Make syntax.** `make` keeps the spaces before an inline `#` comment: `export PLATFORM = asap7   # note` sets
 `"asap7   "` and fails with "Is a directory". Put comments on their own line.
@@ -291,7 +301,10 @@ use `CTS_BUF_LIST` (this ORFS passes it as `-buf_list`), not `CTS_ARGS`, which r
 - "stack smashing detected" (signal 6) in timing-driven global placement ("executing resizer for reweighting nets").
   The same crash in OpenLane was fixed by turning timing-driven placement off; the ORFS equivalent
   `GPL_TIMING_DRIVEN=0` (default 1) is untested (no upstream report found). The default OpenROAD also crashed in
-  timing-driven placement on a sky130 design (sky130 notes 1.1).
+  timing-driven placement on a sky130 design (sky130 notes 1.1). **Probably the faulty CPU 0, not OpenROAD** (sky130
+  notes 0): five such crashes of large latch cores (signals 11, 6 and 4, about 80 s into the first timing-driven
+  iteration) all fell between 2026-10-27 20:00 and 10-28 06:00, the same configuration placed before and after, and
+  since the core was fenced off on 2026-10-29 five runs with timing-driven placement on had no crash.
 - Detailed routing out of memory: a 400 k-instance latch core at 19 GB, another core at 29.6 GB in the first
   iteration. Declare memory per section 10.
 - Rerunning `do-5_2_route` from a copied `5_1_grt.odb`: copy `5_1_grt.sdc` with it (the old checkout also needs
@@ -313,7 +326,11 @@ ORFS also leaves tens to hundreds of max-slew violations per run; record the cou
 ## 7. Timing sign-off
 
 **7.1 Setup.** Sign off with OpenSTA yourself on the routed netlist and SPEF at the corner you report (sky130 notes
-6.2), because ORFS signs off at FF by default (3.3). A reported setup slack of 0.00 on latch paths is time borrowing,
+6.2), because ORFS signs off at FF by default (3.3). **Propagate the clocks** (`set_propagated_clock [all_clocks]`)
+when you read the design's SDC, which leaves them ideal (6.1): with ideal clocks an own check on a 668 000-instance
+latch core gave hold +58.2 ps where ORFS (propagated) had −80.4 ps; with propagated clocks the own check matched ORFS
+to the last digit. `tools/hold_sta.tcl` always propagates; `tools/signoff_sta.tcl` does when the SDC does
+not. A reported setup slack of 0.00 on latch paths is time borrowing,
 not a zero margin.
 
 **7.2 Hold.** The old ORFS reports no hold slack (the metric was added upstream in March 2025): its
@@ -429,10 +446,17 @@ and put ASAP7 CTS `BUFx` cells in "Combinational". Check the breakdown classes b
 | ↳ detailed routing (131 883 → 0 violations in 5 iterations) | | 92 min | 32.5 GB |
 | ↳ `6_report` (RCX) | | 18 min | 19.5 GB |
 | ~1 M-instance cores: synthesis / global placement / global routing | 3 | 5 / 20 / 12 min | 3 / 7 / 15 GB |
+| 570–590 k-instance latch cores: global routing / detailed routing / `6_report` (RCX) | 4 | 30 min / 3.0–3.6 h / 36–47 min | 18–24 / 39–43 / **35–45 GB** |
 | Icarus SDF, 5 000-bin window, 20 k-cell core | 1 | 60 min RVT, 55 min SRAM-Vt | < 1 GB |
 | Verilator, 1.58 M-instance routed netlist | | build 20 min, run 6 min | 6–8 GB |
 
-Detailed-routing memory scaled at about 124 kB per synthesised cell.
+Detailed-routing memory scaled at 70–125 kB per instance, depending on the design. `6_report` (RCX) can need almost as
+much as detailed routing: declare the larger of the two.
+
+**Swap.** Detailed routing of a 74 500-instance core (3 threads, 3 iterations, 19.2 GB peak in RAM, 2.8 h) ran 10–14 %
+longer with its RAM capped at 11.6 or 5.3 GB and about 19 GB in swap. A much larger run was slower in swap (26.5 h at
+113 % CPU on 4 threads with 66 GB of swap, against 3.3 h at 381 % CPU in RAM for a similar core), but queue freezes
+may be mixed into that number. Declare the real peak (`--mem`), so that the queue does not have to rely on swap.
 
 ## 11. Checklist for every measurement
 
@@ -476,8 +500,6 @@ General questions that no measurement here has answered yet. Report answers thro
 | Do the vendor ASAP7 SEQ models work in current Icarus once the notifier is initialised and the SDF rescaled? | 8.1 |
 | Does a smaller CTS buffer list reduce the clock-tree power of latch-row cores? | 6.4 |
 | Which global-routing layer adjustment (through `FASTROUTE_TCL`) lets large latch cores route at 15–20 %? | 6.5 |
-| Does `GPL_TIMING_DRIVEN=0` avoid the "stack smashing" crash? | 6.5 |
-| How much slower is an ORFS run in swap than in RAM? | 10 |
 | Where does the remaining ~5 % of dynamic energy after the root-clock correction come from (joint D/QN states of the clock-pin tables)? | 9.6 |
 | Are fakeram7 macros, re-characterised with CACTI, usable for energy claims? | 3.1 |
 | Why did a Verilator run on one synthesis netlist fail where Icarus and the routed netlist passed? | 8.2 |
@@ -496,3 +518,4 @@ General questions that no measurement here has answered yet. Report answers thro
 | 4.1 | 2026-10-25 | the queue's guide for agents is now `/media/amir/.jobq/AGENTS.md` (section 0) |
 | 4.2 | 2026-10-28 | from the inbox: `DETAILED_ROUTE_END_ITERATION` instead of `DETAILED_ROUTE_ARGS` (6.1); sanitiser fixed for the ICG rise delay and the time scale (8.1); ICGx2 model; glitch factor of a latch-memory core by function (8.3); fourth SPEF spelling for `legal_names.py` (9.4) |
 | 5.0 | 2026-10-30 | full review against the ORFS `ef2cb37` sources: start-here and silent-error table; history moved to the end. Corrected for this ORFS: the flavour check reads the logs (1, 11); `ROUTING_LAYER_ADJUSTMENT` is ignored on ASAP7, use `FASTROUTE_TCL` (6.5); `CTS_BUF_LIST` exists (6.4); `REMOVE_ABC_BUFFERS` deprecated (5); `EQUIVALENCE_CHECK` does not cover synthesis (5); routing rerun and congestion messages (6.5); no physical cells in `6_final.v` (8.1, 9.3); the SPEF `$` spelling (9.4); hold buffers are `BUFx2` (9.6). New: `-D OPENROAD_CLKGATE` or the gates become wires (4); never `SYNTH_MOCK_LARGE_MEMORIES` (5); 1 ps model copies with `sed` (8.1); OpenSTA 2.7 converts activities with the fastest clock (9.1); watchdogs and frozen jobs (6.6); ICG clock-pin power is state-dependent (9.6); SS numbers flagged (3.3) |
+| 5.1 | 2026-11-01 | monthly review. Upstream: a `SYNTH_KEEP_MODULES` name that matches nothing flattens the module silently in `ef2cb37` (5); ORFS #3034's fix covers an empty `DISPLAY` only (1). From the projects: own sign-off on the design SDC must propagate the clocks (7.1, 6.1); OpenSTA's Tcl slack commands return seconds (3.4); the timing-driven placement crashes were probably the faulty CPU 0 (6.5); runtime and memory of 570–590 k-instance cores, `6_report` near detailed routing's memory, swap measured (10); two open questions answered (13); three silent-error rows |

@@ -11,7 +11,7 @@ every difference.
 |---|---|---|---|
 | `designs/sram_probe` | sky130, one SRAM22 macro, 432 cells after synthesis | macro floorplan and power grid, SRAM22 state correction, root-clock correction | SDF, 200 bins |
 | `designs/lmem2g` | sky130 latch-memory core, 50 688 latches in 97 rows, ~158 k cells, no latch waivers | routability and scaling, hold at latch inputs, per-row clock gates | zero delay, 20 bins |
-| `designs/snn2_d` | sky130 adder-tree core, ~34 k cells, 155 clock gates | routing congestion (it failed at 40 % with LibreLane), adder trees, glitches | SDF, 25 samples |
+| `designs/snn2_d` | sky130 adder-tree core, ~34 k cells, 155 clock gates | routing congestion (one netlist of it failed at 40 % with LibreLane, a slightly different one routed), adder trees, glitches | SDF, 25 samples |
 | `designs/min32_asap7` | ASAP7 SRAM-Vt core, ~18 k cells | ORFS at TT, own hold check, 1 ps Icarus models, ICG delays, multi-PDK root-clock correction | SDF, 50 bins |
 
 Each directory is a frozen copy (RTL, testbench, stimulus, expected outputs, constraints) with `ORIGIN` (project,

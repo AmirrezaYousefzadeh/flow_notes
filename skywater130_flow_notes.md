@@ -1,6 +1,6 @@
 # SkyWater 130 nm flow notes: synthesis, hardening, gate-level simulation and power
 
-**Version 6.4, last updated 2026-10-30.** The full history is in "Version history" at the end.
+**Version 6.5, last updated 2026-11-01.** The full history is in "Version history" at the end.
 
 Read this before you synthesise, harden or measure anything on sky130 on this machine. It is written for engineers
 and AI agents. Everything here was learned the hard way, in several research designs measured on this machine:
@@ -54,7 +54,10 @@ Before every measurement: the table below, then the checklist in section 10.
 | a macro or library without its liberty | a black box with zero power | 8.3, 9.4 |
 | timing derating off in OpenLane 2 | slacks optimistic by up to 5 % | 6.1 |
 | an SDC exception that matches no object | the constraint silently does nothing | 6.1 |
-| sign-off on incomplete parasitics or at one corner only | hold failures missed | 5.4, 6.2 |
+| sign-off on incomplete parasitics or at one corner only | hold failures missed (with default margins: at ff in 3 of 3 cores) | 5.1, 5.4, 6.2 |
+| per-corner slacks of a run that never reached `STAPostPNR` | pre-placement values, unmarked | 6.2 |
+| OpenSTA's Tcl slack commands read as ns or ps (they return seconds) | hold violations logged as −0.0 | 6.2 |
+| a reused result skipped because its file exists | power of the previous netlist | 8.6 |
 
 Contents:
 0. Ground rules on this machine
@@ -94,6 +97,12 @@ The workstation (24 cores, 62 GB RAM, one RTX 4060 Ti with 8 GB) is shared with 
   - The queue runs jobs at `nice 19`, idle I/O priority and the lowest CPU weight, and its watchdog kills leftover
     processes and stalled jobs. Do not pin or widen the CPU set (`taskset`, `numactl`): jobs inherit the queue's CPU
     set, which leaves out a faulty core.
+  - **A crash before 2026-10-29 14:23 is suspect.** Until then CPU 0 of this machine was faulty: OpenROAD, OpenSTA,
+    gcc and other programs crashed at random (signals 11, 6 "stack smashing" and 4 "illegal instruction", often in
+    `sta::Network::visitConnectedPins`), and the same input passed on any other core (a CTS step: 4 of 4 crashes on
+    CPU 0, 0 of 16 elsewhere). Runs that finished gave byte-identical databases, so no wrong numbers were found, only
+    crashes. Since then the system keeps every process off CPU 0. Rerun a crash from before that time before you call
+    it a tool bug, and never pin a job to CPU 0 (`taskset -c 0` still reaches it).
   - If the daemon is down, tell the owner; do not start jobs outside the queue. Never cancel other people's jobs.
 - **Memory figures for declaring `--mem`.**
   - Icarus compilation of a 100 000-cell SDF-annotated netlist: about 10 GB. Six at once triggered the out-of-memory
@@ -101,6 +110,7 @@ The workstation (24 cores, 62 GB RAM, one RTX 4060 Ti with 8 GB) is shared with 
   - OpenROAD detailed routing: 10–15 GB for 100 000-cell cores; above 20 GB for a 155 000-latch core, which then
     failed.
   - OpenROAD repair at a low-voltage corner: 40–45 GB (section 5.7).
+  - Gate-level simulation and power of a 34 000-cell core in 4 parallel slices: 22 GB, 58 min.
 - **Nix builds run outside the queue.** A `nix develop` that has to compile tools runs in the Nix daemon, not in your
   job; the daemon is capped at 2 builds × 4 cores. Tool installation is the maintainer's job.
 - **Never edit a running bash script in place.** Bash reads scripts incrementally, so editing one mid-run corrupts
@@ -164,7 +174,8 @@ path: a broken link to a liberty file makes a macro silently disappear from the 
 - **Changed defaults:** a second antenna repair after detailed routing (`DRT_ANTENNA_REPAIR_ITERS: 3`; 5.1), a clock
   non-default routing rule (`CTS_APPLY_NDR: half`; 5.1), timing-driven placement off (`PL_TIMING_DRIVEN: false`).
   Turning timing-driven placement on made OpenROAD `dcf3613` crash (segmentation fault in
-  `rsz::Rebuffer::fullyRebuffer`) in global placement on one design.
+  `rsz::Rebuffer::fullyRebuffer`) in global placement on one design, on 2026-10-27 while CPU 0 was faulty (section
+  0), with the crash site typical of that core: probably not a tool bug; not retried since.
 - **The numbers move.** On the reference design (validation, 2026-10-24): 14 % more cells and 32 % more cell area, a
   larger root clock tree (10 instead of 4 buffers), dynamic power +25 %, total power +0.9 % (an SRAM-leakage-dominated
   design); SDF errors, SPEF misses and timing stay clean.
@@ -200,14 +211,22 @@ path: a broken link to a liberty file makes a macro silently disappear from the 
     (all runs DRC-clean and timing-clean): B −2 % cell area; A −9 % cell area and −9 % estimated power, but twice the
     hold delay cells (33 → 63); A and B −12 % area. On a 34 000-cell core, A gave a drive-1 netlist that the repair
     kept (it resized 423 cells, up where needed: `dfxtp_1` 3 466, `dfxtp_2` 167), with a few more slew violations
-    (1 657 against 1 406) and as many buffers as before (4 416, of them 1 457 delay cells, which B removes); energy
-    still to be measured. Set B with a list in the configuration file, not with
+    (1 657 against 1 406) and as many buffers as before (4 416, of them 1 457 delay cells). B with A replaces the
+    delay cells by `clkbuf_4` (2 318, as data buffers before CTS) and `buf_1` (1 456) but not their number (4 923
+    against 4 416). **Measured on that core** (100 samples with SDF, decap-free, root-clock correction, port buffers
+    on in all three): energy per inference 494 nJ without a remedy, 455 nJ with A (−8 %) and 453 nJ with A and B at
+    tt; 129, 105 (−19 %) and 105 nJ at `ss_n40C_1v28`, where the static energy halves (12.4 → 6.1 nJ). The cost: with
+    drive-1 cells the core no longer routed at 40 % (detailed routing stalled at 89 000 violations where the drive-2
+    netlist converged at the same placed utilisation) and was accepted at 30 %: core area +24 %, wire length +15 %, 1
+    300 more buffers, all included in the energies above. Set B with a list in the configuration file, not with
     `--override-config` (the quotes reach Tcl and stop the flow). Until the notes decide on A, harden every compared
     design with the same settings and state them.
 - **The routable utilisation can drop.** A flat 28 000-cell adder-tree core that routed at 40 % with OpenLane 2
   (global-routing overflow 10 506, detailed routing converged in 14 iterations) had 3.3× the overflow with LibreLane
-  and never converged at 40 % (violations rising to 200 000); it routed at 30 %. Harden every design again with the
-  ladder of 5.3.
+  and never converged at 40 % (violations rising to 200 000); it routed at 30 %. Later the same core, synthesised
+  again from regenerated RTL (a netlist that differed only slightly), had half that overflow (18 952 against 34 488)
+  and routed at 40 % in 13 iterations. Routability is very sensitive to small netlist changes: one failed utilisation
+  is not a property of the design. Harden every design again with the ladder of 5.3.
 - **Kept parametrised modules stop LibreLane after synthesis** (section 4).
 - **Fixed in LibreLane:** the timing derating (6.1); OpenSTA 2.7 reads SPEF with escaped names (5.4) and stores
   activities as densities (8.1).
@@ -288,12 +307,12 @@ flow's template (`tools/reference_flow/config.template.yaml`) is an example, wit
 | `ENDCAP_CELL` | `decap_3` (hd default; `ms` and `hs` use `decap_4`) | Endcaps remain decaps even with `DECAP_CELLS: []`: 1 200–1 850 cells, about 4–6 nW. Negligible, but "decap-free" is not literal. |
 | `RUN_HEURISTIC_DIODE_INSERTION: false`, `DIODE_ON_PORTS: none` | the defaults | Antenna diodes are silicon robustness (header): leave them out of a measurement; on for a tapeout (section 12). Heuristic insertion also broke legalisation at high utilisation. |
 | `RUN_ANTENNA_REPAIR: false`, `DRT_ANTENNA_REPAIR_ITERS: 0` | | Antenna violations are reported, not gated. Measurement only. In LibreLane, `RUN_ANTENNA_REPAIR` stops only the repair after global routing; a second loop after detailed routing (`DRT_ANTENNA_REPAIR_ITERS`, default 3, active whenever the PDK sets `DIODE_CELL`) checks antennas, inserts diodes and routes again. On a 28 000-cell core it inserted 1 232 diodes after routing had reached 0 violations, and the second routing started at 8 723 violations: double the routing time, cells the measurement does not want, and a risk for convergence. |
-| hold slack margins | the defaults (0.1 ns at placement, 0.05 ns at global routing) for a measurement-only project | Hold must be met at every sign-off corner with full parasitics (6.2); a margin above that is silicon insurance, not correctness. A 0.5 ns overfix cost about 0.6 µW (8 %) in a 7–9 µW design. With a small margin, the final hold check may fail and need a re-hardening; that is the trade-off. Choose and document the margin. |
+| hold slack margins | the defaults for a measurement-only project: 0.1 ns in the repair after CTS (`PL_RESIZER_HOLD_SLACK_MARGIN`); `GRT_RESIZER_HOLD_SLACK_MARGIN` (0.05 ns) acts only with `RUN_POST_GRT_RESIZER_TIMING: true`, which is off by default | Hold must be met at every sign-off corner with full parasitics (6.2); a margin above that is silicon insurance, not correctness. A 0.5 ns overfix cost about 0.6 µW (8 %) in a 7–9 µW design (5.6 times the hold buffers in another). **With the defaults, hold fails at the fast corner:** three of three LibreLane cores met hold at tt (0.05–0.12 ns) and failed at `ff_n40C_1v95` (−0.12 to −0.17 ns, 15 to 721 endpoints); with 0.5 ns margins all 9 corners passed. A sign-off at tt only accepts such a layout without a word. Choose and document the margin, and sign off hold at every corner (6.2). |
 | `*_HOLD_MAX_BUFFER_PCT` | 80 (default 50) | Hold buffers are numerous: 15 % of the cells in one design. LibreLane reports them as `design__instance__count__hold_buffer`. |
 | `DESIGN_REPAIR_BUFFER_INPUT_PORTS: false`, `DESIGN_REPAIR_BUFFER_OUTPUT_PORTS: false` | false for a measurement (defaults true); true for a tapeout (section 12) | One buffer per port (in LibreLane 3.0.16 the delay cell `clkdlybuf4s25_1`, 1.1). They give a stand-alone chip defined loads and drives at its pins; a block measured as a part of an SoC needs none. Their power follows the ports' activity: 1 % of the dynamic power of a 700-cell reference design with 122 ports. Without output buffers, the block's own output drivers carry the SDC's output load (`OUTPUT_CAP_LOAD`, 33.4 fF by default, 8.8): set a load that fits the block's place in the SoC, and state it. |
 | `EXTRA_EXCLUDED_CELLS: ["sky130_fd_sc_hd__clkdlybuf4s*"]` | (default none) | OpenROAD `dcf3613` picks the delay cells `clkdlybuf4s*` as ordinary buffers in design repair (1.1; OpenROAD #10622). Excluding them cut cell area 2 % on an example with nothing worse; hold repair keeps `dlygate*`. Write the list in the configuration file: through `--override-config` the quotes reach Tcl and stop the flow. Remove it when upstream fixes the buffer choice. |
 | `GRT_ALLOW_CONGESTION` | true (default false) | A congested design reaches detailed routing, where the watchdog (5.3) judges it. Measurement only; false for tapeout. |
-| `CTS_APPLY_NDR` | `none` for designs with many gated clock nets (LibreLane default `half`) | With the default 2×-spacing rule on the upper clock nets, LibreLane 3.0.16's global router aborted with `GRT-0228/0229` ("edge usage exceeds the maximum allowed") on a core with 3 743 gated clock nets, at 50, 30 and 20 % utilisation; `GRT_ALLOW_CONGESTION` does not cover it (OpenROAD issue #11653; fixed by PR #11754, not in our version). OpenLane 2 applied no clock NDR, so `none` also keeps results comparable. |
+| `CTS_APPLY_NDR` | `none` for designs with many gated clock nets (LibreLane default `half`) | With the default 2×-spacing rule on the upper clock nets, LibreLane 3.0.16's global router aborted with `GRT-0228/0229` ("edge usage exceeds the maximum allowed") on a core with 3 743 gated clock nets, at 50, 30 and 20 % utilisation; `GRT_ALLOW_CONGESTION` does not cover it in our version (OpenROAD PR #11754, 2026-10-15, makes that guard honour `-allow_congestion`). The clock-net detours with clock NDRs are open upstream and got worse in OpenROAD 26Q4, which LibreLane 3.1 will ship (issue #11653; PRs #11963 and #12039 in progress). OpenLane 2 applied no clock NDR, so `none` also keeps results comparable. |
 | `PL_RESIZER_SETUP_SLACK_MARGIN`, `GRT_RESIZER_SETUP_SLACK_MARGIN` | 0 for latch memories timed without waivers (defaults 0.05 and 0.025 ns) | Latches borrow time and report a setup slack of exactly 0; with a positive margin every weight latch is a "violation" that no move can improve, and `repair_timing` looped 80 000 times in an hour without changing anything. Sign-off still requires slack ≥ 0. |
 | utilisation / density | density = utilisation + 10 %, at most 95 % | This equals the flow's default (utilisation + 5 × cell padding + 10, with padding 0 on sky130); with the cell padding of 2 used for SRAM22 floorplans (5.5) the default would be +20. A large ROM core closed at 20 % and not at 30 %; the same netlist at 30 % and 20 % differed by 7 % in power. Small logic cores route at 60 %; latch and register-file cores only at 20–30 % (seven 60 % attempts were hopeless after 7 h). LibreLane can need a lower utilisation than OpenLane 2 (1.1). |
 
@@ -320,13 +339,19 @@ hand ran 2.8 days before anyone noticed.
 - **Utilisation ladder:** try utilisations from dense to sparse and accept the first attempt that passes 5.2. State
   the steps, and report the accepted utilisation with every energy number, since utilisation changes wire length and
   power.
+- **A crash is not a routing failure.** A ladder that treats any failed attempt as "did not route" steps down after a
+  crash: one 40/30/20 % ladder ended "nothing converged" after 16 minutes of segmentation faults, and the core later
+  routed at 40 %. Stop (or rerun the same utilisation) on a crash; step down only on a routing result.
+- **Never overwrite an accepted run by reusing its tag.** A resubmission with the same run tag deleted an accepted
+  layout before it could be cancelled (LibreLane's `--overwrite`, or a script that clears the tag).
 - **Log every attempt**, accepted or rejected, with its reason and run time.
 - **In a comparison, harden every design under the same rule**; do not tune utilisation per design by hand.
 - `tools/harden_ladder.sh <config> <work dir> "50 40 30 20"` does all of this for any LibreLane configuration. It
   accepts on LibreLane's worst setup and hold slack over all its STA corners (stricter than LibreLane's own checkers,
   6.2), plus an optional own sign-off (`SIGNOFF_CMD`). It varies `FP_CORE_UTIL`, which has no effect with
   `FP_SIZING: absolute` (SRAM22 floorplans, 5.5): there, vary the die size. Its runs go next to the configuration, so
-  give two ladders different configuration directories. `tools/reference_flow/harden.sh` does the same for the
+  give two ladders different configuration directories. It stops on a crash, and it refuses to start when one of its
+  run directories (`runs/u<U>`) exists, unless `OVERWRITE=1`. `tools/reference_flow/harden.sh` does the same for the
   reference design.
 
 **5.4 Escaped hierarchical names: the costliest silent error.** Kept hierarchy and generate blocks appear in the routed
@@ -395,6 +420,10 @@ it is characterised at −40 °C.
   depends on the flow: in LibreLane the nets keep them and the cells do not, in ORFS the cells keep Yosys' register
   names (`\u_wmem/lat[39]$_DLATCH_P_`) and the nets do not; an exception that must work in both looks for nets first,
   then cells.
+- **Use glob patterns, not `-regexp`, for hierarchical names.** In a LibreLane netlist, `get_nets -hierarchical
+  -regexp {.*sel_r(\[[0-9]+\]|_[0-9]+_).*}` matched nothing while the globs `*sel_r\[*` and `*sel_r_*` found all
+  206 nets. Check the count where the SDC is first read (the floorplan log, minutes into the run), not at sign-off: one
+  run was rejected for an empty exception only after 29 hours.
 - **Timing derating was off in every OpenLane 2 run on sky130.** OpenLane 2.3.10's `base.sdc` computes
   `set_timing_derate -early [expr 1-[expr $::env(TIME_DERATING_CONSTRAINT) / 100]]`; OpenLane 2's PDK
   compatibility layer sets the constraint to the integer 5, and Tcl's integer division gives 0, so both derate factors
@@ -410,11 +439,19 @@ SDC variables (from `runs/<tag>/resolved.json`), not hand-written constraints. A
 names, OpenLane 2's sign-off reported a hold slack of 0.35 ns where the complete parasitics give 0.52 ns; the error
 can go either way. For a flat netlist with zero SPEF misses, the flow's own sign-off is acceptable. `signoff_sta.tcl`
 checks one corner (one liberty set, one SPEF) per call.
+- **OpenSTA's Tcl slack commands return seconds.** `sta::worst_slack_cmd` and `sta::total_negative_slack_cmd` give SI
+  seconds whatever the liberty's time unit: multiply by 1e9 for ns (1e12 for ps on ASAP7). A script that compared them
+  with ns or ps thresholds logged hold slacks of −4 and −30 ps as "−0.0 ps" and computed its retry margins from zero.
+  `signoff_sta.tcl` prints both (`SIGNOFF` in seconds, `SIGNOFF_NS` in ns); `hold_sta.tcl` converts.
 - **Which corners.** LibreLane's default `STA_CORNERS` are {nom, min, max} parasitics × {tt_025C_1v80, ss_100C_1v60,
   ff_n40C_1v95}. Its checkers fail hold at all 9 (`HOLD_VIOLATION_CORNERS: "*"`) but setup only at the typical ones
   (`TIMING_VIOLATION_CORNERS: "*tt*"`; OpenLane 2 checks both at tt only), and they do not run when the flow stops at
   `STAPostPNR`. In `final/metrics.json`, `timing__setup__ws` and `timing__hold__ws` are the worst over all 9 corners,
-  `timing__*__ws__corner:<corner>` the per-corner values. Signing off at the typical corner only is a weaker choice.
+  `timing__*__ws__corner:<corner>` the per-corner values. **They are post-route values only if the run reached
+  `STAPostPNR`.** That step is skipped with `RUN_MCSTA: false` or an earlier `--to`; the metrics then keep the
+  pre-placement values of `STAPrePNR` (unplaced netlist, ideal clocks) for every corner the single-corner
+  `STAMidPNR` did not analyse, unmarked (LibreLane issue #1040, fix open as PR #1042). `check_metrics.py` and
+  `harden_ladder.sh` reject such a run. Signing off at the typical corner only is a weaker choice.
   State your policy with the result, and check every corner at which you report numbers. (Caravel's own timing sign-off,
   `make caravel-sta`, uses the same 3 × 3 grid; `cf precheck` checks no timing.)
 
@@ -530,7 +567,11 @@ Check clock latency and skew after routing, not only slack.
   `report_activity_annotation` does not exist (added 2025-01-15; a script calling it stops with "invalid command
   name", one that wraps it in `catch` silently checks nothing), `set_clock_sense` is deprecated in favour of
   `set_sense -type clock`, and `read_power_activities` in favour of `read_vcd`.
-- `set_power_activity -input` applies to every timing root, including tie-cell outputs (OpenSTA issue #539).
+- `set_power_activity -input` applies to every timing root, including tie-cell outputs: unless a measured activity
+  overrides it, a tied-high pin gets the input duty, so a `when` condition on it (a flip-flop's `SET_B`, `RESET_B`)
+  reads it as off with `-duty 0` and as half on with OpenSTA's default (OpenSTA issue #539: internal power halved in
+  its test case). Fixed in OpenROAD's OpenSTA by PR #425 (2026-10-19), which is neither in 2.7.0 `857316f` nor in
+  the OpenSTA `e913e15` that LibreLane 3.1 pins. Annotate the tie-cell outputs from the simulation too.
 - Without annotation, OpenSTA propagates activity through logic (vectorless); that overestimates (OpenSTA issue
   #333) and models no glitches. Annotate every pin you can.
 
@@ -586,7 +627,10 @@ cell class (logic, clock tree, flip-flops, latches, hold cells, repair buffers, 
 surprise quickly. Record the clock period actually used in the result file, not a default from a comment.
 
 **8.6 Reuse a simulation only for identical inputs.** Stamp it with a hash of the netlist, SDF, SPEF, stimulus and
-configuration image, leaving out the `*DATE` and `(DATE ...)` header lines, which change on every run.
+configuration image, leaving out the `*DATE` and `(DATE ...)` header lines, which change on every run. Every script
+that skips work must compare the stamp, not test whether an output file exists: an outer script that skipped the
+measurement because its result file existed reported a re-hardened design (63 317 cells) with the power of the
+previous netlist (65 381 cells).
 
 **8.7 A global (median) activity is not a cross-check.** A flow that applied one median activity to every data net
 agreed with the per-pin flow "within 5 %" only because errors cancelled (combinational 0.58 against 1.62 mW, macro
@@ -789,3 +833,4 @@ When tapeout work verifies any of this, report it through the inbox; it will get
 | 6.2 | 2026-10-30 | owner's decision: exclude the delay cells `clkdlybuf4s*` from synthesis and repair (5.1, 1.1) |
 | 6.3 | 2026-10-30 | from the inbox: LibreLane's extra buffers come from `repair_design` alone (synthesis buffering off in both versions), CTS defaults changed; first real-core result of remedy A (1.1) |
 | 6.4 | 2026-10-30 | from the reference validation: `LINTER_ERROR_ON_LATCH: false` for intended latch memories (9.2) |
+| 6.5 | 2026-11-01 | monthly review. Upstream: per-corner metrics are post-route only after `STAPostPNR` (6.2, tools check it); OpenROAD #11653 is not fixed by #11754 and got worse in 26Q4 (5.1); OpenSTA #539 fixed upstream, not in our version (8.1). From the projects: the faulty CPU 0 and crashes before 2026-10-29 (0, 1.1); remedy A measured: −8 % energy at tt, −19 % at 1.28 V, one utilisation step lost (1.1); routability sensitive to small netlist changes (1.1); default hold margins fail hold at ff, the global-routing margin is inactive by default (5.1); crashes and reused tags in the ladder (5.3, tool updated); glob instead of `-regexp` for exceptions (6.1); OpenSTA's Tcl slacks in seconds (6.2, `signoff_sta.tcl` prints ns too); skip on a stamp, not on a file (8.6); a memory figure (0); four silent-error rows |

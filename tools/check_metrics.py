@@ -4,6 +4,11 @@ clean, setup and hold met at one corner (--corner; run it once per sign-off corn
 unmatched SPEF entry in the own sign-off, and optionally at most --cell-cap standard cells. Tap cells are not counted:
 their number grows with the core area, not with the design.
 
+The flow's slacks are post-route only if the run reached OpenROAD.STAPostPNR (skipped with RUN_MCSTA: false or an
+earlier --to): otherwise the per-corner metrics keep STAPrePNR's values (unplaced netlist, ideal clocks) for every
+corner STAMidPNR did not analyse (LibreLane issue #1040). A <run dir>/final/metrics.json without a STAPostPNR step
+directory beside it is rejected unless --signoff gives the timing.
+
 The timing comes from --signoff, the result of flow/tools/signoff_sta.tcl on the renamed netlist and SPEF that the
 simulation and the power analysis also read (with OpenLane 2, the flow's own sign-off lost the parasitics of the nets
 inside sub-modules); the flow's own slacks are kept for comparison. Without --signoff the flow's slacks are used.
@@ -18,7 +23,9 @@ Usage: check_metrics.py <run dir>/final/metrics.json [--signoff signoff.json] [-
 Prints a one-line summary and PASS or FAIL; exit status 0 on PASS.
 """
 import argparse
+import glob
 import json
+import os
 
 
 def unmapped(stat_json):
@@ -63,6 +70,10 @@ def main():
         "corner": a.corner,
         "cell_cap": a.cell_cap,
     }
+    final_dir = os.path.dirname(os.path.abspath(a.metrics))
+    if os.path.basename(final_dir) == "final":
+        summary["librelane_timing_post_route"] = bool(
+            glob.glob(os.path.join(os.path.dirname(final_dir), "*-openroad-stapostpnr*")))
     if a.signoff:
         signoff = json.load(open(a.signoff))
         summary["librelane_setup_ws_ns"], summary["librelane_hold_ws_ns"] = summary["setup_ws_ns"], summary["hold_ws_ns"]
@@ -76,6 +87,9 @@ def main():
         reasons.append(f"{summary['unmapped_cells']} cells left unmapped by synthesis")
     if summary["drc_errors"] != 0:
         reasons.append(f"routing DRC errors: {summary['drc_errors']}")
+    if not a.signoff and summary.get("librelane_timing_post_route") is False:
+        reasons.append("no STAPostPNR step in the run (RUN_MCSTA off or the run stopped earlier): its slacks are "
+                       "pre-placement values")
     if summary["setup_ws_ns"] is None or summary["setup_ws_ns"] < 0:
         reasons.append(f"setup slack {summary['setup_ws_ns']} ns at {a.corner}")
     if summary["hold_ws_ns"] is None or summary["hold_ws_ns"] < 0:
