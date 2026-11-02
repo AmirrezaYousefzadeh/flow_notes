@@ -1,4 +1,5 @@
-origin: BCI_paper, commit cc819ec (2026-10-13); the copied tracked files are unmodified against it; copied 2026-10-30
+origin: BCI_paper (archived in /media/amir/Arxive/BCI_paper since 2026-11), commit cc819ec (2026-10-13); the copied
+tracked files are unmodified against it; copied 2026-10-30
   rtl/bmi_snn_min32.v           <- rtl/gen/pdk/asap7sram/bmi_snn_min32.v (sw/gen_variant.py --pdk retarget; last commit
                                    f39b165, 2026-09-19). The SRAM-Vt copy: it differs from rtl/gen/pdk/asap7/ only in the
                                    clock-gate cell (ICGx1_ASAP7_75t_SRAM instead of _R), and it is the file of the project's

@@ -87,7 +87,9 @@ summary = {
     "repair_buffers": m.get("design__instance__count__class:timing_repair_buffer"),
     "setup_ws_ns": so["setup_ws_ns"], "hold_ws_ns": so["hold_ws_ns"], "signoff_corners": len(so["corners"]),
     "drc_errors": m.get("route__drc_errors"), "power_grid_violations": m.get("design__power_grid_violation__count"),
-    "antenna_violating_nets": m.get("antenna__violating__nets"), "versions": versions}
+    "antenna_violating_nets": m.get("antenna__violating__nets"),
+    "slew_violations_nom_tt": m.get("design__max_slew_violation__count__corner:nom_tt_025C_1v80"),
+    "output_cap_load_fF": json.load(open(f"{run}/resolved.json")).get("OUTPUT_CAP_LOAD"), "versions": versions}
 json.dump(summary, open(f"{work}/harden.json", "w"), indent=1)
 print(json.dumps({k: v for k, v in summary.items() if k not in ("attempts", "versions")}))
 PY

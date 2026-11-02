@@ -10,7 +10,7 @@ every difference.
 | design | kind | what it exercises | simulation |
 |---|---|---|---|
 | `designs/sram_probe` | sky130, one SRAM22 macro, 432 cells after synthesis | macro floorplan and power grid, SRAM22 state correction, root-clock correction | SDF, 200 bins |
-| `designs/lmem2g` | sky130 latch-memory core, 50 688 latches in 97 rows, ~158 k cells, no latch waivers | routability and scaling, hold at latch inputs, per-row clock gates | zero delay, 20 bins |
+| `designs/lmem16` | sky130 latch-memory core, 12 672 latches in 97 rows plus 16 words, 113 row clock gates, no latch waivers | latch timing without waivers, hold at latch inputs, per-row clock gates without clock NDR | SDF, 50 bins |
 | `designs/snn2_d` | sky130 adder-tree core, ~34 k cells, 155 clock gates | routing congestion (one netlist of it failed at 40 % with LibreLane, a slightly different one routed), adder trees, glitches | SDF, 25 samples |
 | `designs/min32_asap7` | ASAP7 SRAM-Vt core, ~18 k cells | ORFS at TT, own hold check, 1 ps Icarus models, ICG delays, multi-PDK root-clock correction | SDF, 50 bins |
 
@@ -23,6 +23,15 @@ corrections; ORFS at TT for ASAP7.
 **Run:** `flow/validate.sh <label>` (one `jobq` job per design, work in `work_<label>/`, not in git), then
 `flow/compare.py work_<label> results/<stored set>`; store an accepted set with `--store` into `results/<set>/`.
 Budget: the SRAM22 design minutes, the ASAP7 core under an hour, the adder-tree and latch cores several hours each.
+The output load is the PDK's default (`OUTPUT_CAP_LOAD` 33.442 fF, recorded in each `harden.json`), with no port
+buffers (sky130 5.1).
+
+**The latch core was replaced on 2026-11-03.** The first set had BCI's 64-neuron core `lmem2g` (50 688 latches,
+~158 k cells; still in git at commit `37c170b`). With LibreLane and the default clock NDR it did not route: at 30 %
+detailed routing stopped after 27 h at 209 796 violations (7 iterations), at 20 % global routing was still running
+after 36 h; the global router had dropped the NDR on 725 clock nets "to reduce congestion" (`GRT-0273`). OpenLane 2
+had routed it at 30 %. A set that takes days cannot be rerun after every tool change, so the owner agreed to a
+smaller core: `lmem16` is the same RTL and testbench with 16 instead of 64 hidden neurons (`designs/lmem16/ORIGIN`).
 
 The first stored set (the current defaults, LibreLane 3.0.16, open_pdks `8afc834`, ORFS `ef2cb37`, OSS CAD Suite
 2026-10-24) is being produced; until then the results below are the reference.

@@ -1,5 +1,6 @@
 # Timing constraints for the latch-memory cores bmi_snn_lmem / bmi_snn_lmin (based on OpenLane base.sdc).
-# Validation copy for bmi_snn_lmem2g: latch waivers removed, derating divided by 100.0 (see ../ORIGIN).
+# Validation copy for bmi_snn_lmem16 (the SDC of the lmem2g validation design): latch waivers removed, derating divided
+# by 100.0 (see ../ORIGIN).
 set clock_port __VIRTUAL_CLK__
 if { [info exists ::env(CLOCK_PORT)] } {
     set ::clock_port [lindex $::env(CLOCK_PORT) 0]

@@ -7,6 +7,26 @@ in `inbox/`.
 
 ---
 
+## 2026-11-03: hold data corrected; check slews; no clock NDR with many gated clocks; LibreLane's own sign-off
+
+sky130 notes 6.6:
+- **Correction to the 2026-11-01 entry on hold margins** (5.1): the "three of three cores" were three layouts of two
+  designs, hardened with port buffers and before the delay-cell rule. Two cores under the current settings met hold
+  at all 9 corners with the default margins. Two of the three failing layouts also failed at tt with maximum
+  parasitics, so nominal tt alone is not enough either: sign off hold at all 9 corners.
+- **Check the post-route slew violations** (1.1, checklist 10). Delay cells as fanout buffers gave two decoder cores
+  8–9 % more power, with 24 and 53 times the slew violations at nominal tt; LibreLane only warns. On another core the
+  delay-cell rule put `buf_1` in their place and the slew violations stayed; whether the rule removes the increase on
+  the decoders is being measured.
+- **`CTS_APPLY_NDR: none` for designs with many gated clocks, latch memories with one gate per row included** (5.1,
+  9.2). If your global-routing log shows `GRT-0273 Disabled NDR (to reduce congestion)`, the rule is costing you
+  routability.
+- **LibreLane's own `STAPostPNR` equals an own sign-off** on flat and kept-hierarchy designs (5.4, 6.2): its
+  per-corner values in `final/metrics.json` can stand for the corners your own sign-off does not run, if the run
+  reached `STAPostPNR` and every macro has a liberty per corner.
+
+---
+
 ## 2026-11-01: monthly review; check your sign-off scripts and update three tools
 
 sky130 notes 6.5 and ASAP7 notes 5.1 (history rows list everything). What you must check:
