@@ -7,6 +7,16 @@ in `inbox/`.
 
 ---
 
+## 2026-11-03: the hold repair after global routing did not help on a latch core
+
+sky130 notes 6.9 (5.1): on a latch core that failed hold at ff with the default margins, `RUN_POST_GRT_RESIZER_TIMING:
+true` found no hold violation on the global routes at any of the 9 corners (margin 0.05 ns) and changed nothing;
+sign-off still failed at ff (−0.079 ns). A 0.2 ns `PL_RESIZER_HOLD_SLACK_MARGIN` passed all 9 corners (+0.12 ns at
+`max_ff`) for 1.9 times the hold delay cells and 0.7 % more cell area. If you rely on the post-GRT repair, check its
+log: `RSZ-0033 No hold violations found` means it did nothing. Sign off hold at all 9 corners either way.
+
+---
+
 ## 2026-11-03: CTS can leave a clock gate without its clock; check your netlists
 
 sky130 notes 6.8 (9.2, 5.3, 5.1), ASAP7 notes 5.2 (6.4):
