@@ -1,6 +1,6 @@
 # ASAP7 flow notes: synthesis, place and route with ORFS, gate-level simulation and power
 
-**Version 5.1, last updated 2026-11-01.** The full history is in "Version history" at the end.
+**Version 5.2, last updated 2026-11-03.** The full history is in "Version history" at the end.
 
 Read this before you synthesise, place and route or measure anything on ASAP7 (the predictive 7 nm library) on this
 machine. It is written for engineers and AI agents. It collects what was learned measuring several neural-network
@@ -290,6 +290,10 @@ Settings that every ASAP7 config needs:
 latch core with one tree per 512-latch row; the clock tree took 12.8 µW of 30.6 µW leakage. A smaller CTS buffer is a
 candidate fix, not yet tested. **`CTS_BUF_CELL` does nothing** (removed as obsolete in ORFS PR #2029, 2024-05):
 use `CTS_BUF_LIST` (this ORFS passes it as `-buf_list`), not `CTS_ARGS`, which replaces all CTS arguments.
+**A clock gate can lose its clock in CTS.** The LibreLane binaries' OpenROAD `dcf3613` moves every clock gate to the
+centre of its sinks and, when that point is already taken, leaves the gate's `CLK` unconnected (OpenROAD #9816, fixed
+after `dcf3613`; seen on sky130 latch cores with 113 and 165 row gates, sky130 notes 9.2). ORFS has no
+disconnected-pin check: run `tools/check_clock_gates.py` on `6_final.v` (or a netlist written after CTS).
 
 **6.5 Failures seen and their fixes.**
 - Global-routing congestion (`GRT-0116` or `GRT-0232`; old OpenROAD `GRT-0119`): a 20 k-cell core at 60 % (closed at
@@ -476,6 +480,7 @@ Everything in sky130 notes section 10, plus:
 | `-stop_propagation` in the power script | absent |
 | clocks in the power script | only the one the activities were normalised to (9.1) |
 | ICGs in `1_2_yosys.v` | the number the RTL instantiates (4) |
+| ICGs without a clock input in `6_final.v` (`check_clock_gates.py`) | 0 (6.4) |
 | Icarus model precision | 1 ps, not 10 ps |
 | annotated ICG `CLK→GCLK` rise delay | non-zero |
 | leakage window | the same window as the activity |
@@ -519,3 +524,4 @@ General questions that no measurement here has answered yet. Report answers thro
 | 4.2 | 2026-10-28 | from the inbox: `DETAILED_ROUTE_END_ITERATION` instead of `DETAILED_ROUTE_ARGS` (6.1); sanitiser fixed for the ICG rise delay and the time scale (8.1); ICGx2 model; glitch factor of a latch-memory core by function (8.3); fourth SPEF spelling for `legal_names.py` (9.4) |
 | 5.0 | 2026-10-30 | full review against the ORFS `ef2cb37` sources: start-here and silent-error table; history moved to the end. Corrected for this ORFS: the flavour check reads the logs (1, 11); `ROUTING_LAYER_ADJUSTMENT` is ignored on ASAP7, use `FASTROUTE_TCL` (6.5); `CTS_BUF_LIST` exists (6.4); `REMOVE_ABC_BUFFERS` deprecated (5); `EQUIVALENCE_CHECK` does not cover synthesis (5); routing rerun and congestion messages (6.5); no physical cells in `6_final.v` (8.1, 9.3); the SPEF `$` spelling (9.4); hold buffers are `BUFx2` (9.6). New: `-D OPENROAD_CLKGATE` or the gates become wires (4); never `SYNTH_MOCK_LARGE_MEMORIES` (5); 1 ps model copies with `sed` (8.1); OpenSTA 2.7 converts activities with the fastest clock (9.1); watchdogs and frozen jobs (6.6); ICG clock-pin power is state-dependent (9.6); SS numbers flagged (3.3) |
 | 5.1 | 2026-11-01 | monthly review. Upstream: a `SYNTH_KEEP_MODULES` name that matches nothing flattens the module silently in `ef2cb37` (5); ORFS #3034's fix covers an empty `DISPLAY` only (1). From the projects: own sign-off on the design SDC must propagate the clocks (7.1, 6.1); OpenSTA's Tcl slack commands return seconds (3.4); the timing-driven placement crashes were probably the faulty CPU 0 (6.5); runtime and memory of 570–590 k-instance cores, `6_report` near detailed routing's memory, swap measured (10); two open questions answered (13); three silent-error rows |
+| 5.2 | 2026-11-03 | CTS of OpenROAD `dcf3613` can leave a clock gate without its clock; check `6_final.v` with `check_clock_gates.py` (6.4, 11) |

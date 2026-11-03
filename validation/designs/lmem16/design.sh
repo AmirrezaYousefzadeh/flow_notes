@@ -27,6 +27,9 @@ PL_RESIZER_SETUP_SLACK_MARGIN: 0
 GRT_RESIZER_SETUP_SLACK_MARGIN: 0
 CTS_DISTANCE_BETWEEN_BUFFERS: 150
 CTS_CLK_MAX_WIRE_LENGTH: 300"
+# OpenROAD dcf3613's CTS left one row clock gate without its clock in 3 of 4 runs of the two latch cores (issue
+# #9816): fix the gates in place before CTS (sky130 notes 9.2)
+FIRM_CLOCK_GATES=1
 # simulation: real-time presentation (-DREALTIME), one 4 ms bin after the other with the clock stopped between bins;
 # the testbench checks y0/y1 of every bin against expect_w50.hex and prints "PASS: 50 bins bit-exact"
 TB="$D/tb/tb_bmi_snn.v"

@@ -67,12 +67,15 @@ print(json.load(open(s))["metrics"]["design__instance__area"])' "$WORK")
 fi
 
 export DESIGN_DIR="$D" SIGNOFF_CMD="$FLOW/sky130_signoff.sh" LIBRELANE PDK_ROOT PDK
+# clock gates placed at the centre of their sinks and fixed before CTS: the workaround for CTS losing their clock
+# inputs (sky130 notes 9.2)
+[[ "${FIRM_CLOCK_GATES:-0}" != 1 ]] || export PRE_CTS_TCL="$TOOLS/firm_clock_gates.tcl"
 status=0
 "$TOOLS/harden_ladder.sh" "$CFG" "$WORK" "$UTILS" || status=$?
 [[ $status -eq 0 ]] || { echo "$NAME: no utilisation accepted (see $WORK/ladder.json)"; exit 1; }
 
 python3 - "$WORK" "$(versions_json)" <<'PY'
-import glob, json, sys
+import glob, json, os, sys
 work, versions = sys.argv[1], json.loads(sys.argv[2])
 run = f"{work}/runs/accepted"
 m = json.load(open(f"{run}/final/metrics.json"))
@@ -89,7 +92,8 @@ summary = {
     "drc_errors": m.get("route__drc_errors"), "power_grid_violations": m.get("design__power_grid_violation__count"),
     "antenna_violating_nets": m.get("antenna__violating__nets"),
     "slew_violations_nom_tt": m.get("design__max_slew_violation__count__corner:nom_tt_025C_1v80"),
-    "output_cap_load_fF": json.load(open(f"{run}/resolved.json")).get("OUTPUT_CAP_LOAD"), "versions": versions}
+    "output_cap_load_fF": json.load(open(f"{run}/resolved.json")).get("OUTPUT_CAP_LOAD"),
+    "clock_gates_fixed_before_cts": bool(os.environ.get("PRE_CTS_TCL")), "versions": versions}
 json.dump(summary, open(f"{work}/harden.json", "w"), indent=1)
 print(json.dumps({k: v for k, v in summary.items() if k not in ("attempts", "versions")}))
 PY

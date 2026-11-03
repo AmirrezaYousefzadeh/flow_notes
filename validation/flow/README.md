@@ -30,6 +30,7 @@ constraints), `ORIGIN` (project, commit and source path of every file), and `des
 | `UTILS` | utilisations, dense to sparse ("50 40 30"); one value for a design with SRAM22 macros |
 | `MACRO_CELL`, `MACRO_INSTANCES` | sky130 SRAM22 macro and its instance names (empty without macros) |
 | `CONFIG_EXTRA` | sky130: further LibreLane settings, YAML lines |
+| `FIRM_CLOCK_GATES` | sky130: 1 places the clock gates at the centre of their sinks and fixes them there before CTS (`tools/firm_clock_gates.tcl`), the workaround for CTS losing their clock inputs (sky130 notes 9.2); default 0 |
 | `ORFS_VT`, `ORFS_EXTRA` | asap7: the flavour (`SRAM`, `RVT`, ...) and further `config.mk` lines (`export X = Y`) |
 | `TB`, `TB_TOP`, `DUT` | testbench file, its top module, the instance name of the design in it |
 | `tb_defines()` | a function that sets the array `TB_DEFS`: the testbench's own defines (stimulus, counts, output file under `$OUT`); the flow adds `CLK_PERIOD_NS`, `SDF_ANNOTATE`, `DUMP_PATH`, `DUMP_LEVEL=0`, `DUMP_MODULE=$TB_TOP.$DUT` |

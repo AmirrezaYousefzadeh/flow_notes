@@ -1,6 +1,6 @@
 # SkyWater 130 nm flow notes: synthesis, hardening, gate-level simulation and power
 
-**Version 6.7, last updated 2026-11-03.** The full history is in "Version history" at the end.
+**Version 6.8, last updated 2026-11-03.** The full history is in "Version history" at the end.
 
 Read this before you synthesise, harden or measure anything on sky130 on this machine. It is written for engineers
 and AI agents. Everything here was learned the hard way, in several research designs measured on this machine:
@@ -54,7 +54,7 @@ Before every measurement: the table below, then the checklist in section 10.
 | a macro or library without its liberty | a black box with zero power | 8.3, 9.4 |
 | timing derating off in OpenLane 2 | slacks optimistic by up to 5 % | 6.1 |
 | an SDC exception that matches no object | the constraint silently does nothing | 6.1 |
-| sign-off on incomplete parasitics or at one corner only | hold failures missed (default margins: at ff in 3 of 5 layouts, at tt with maximum parasitics in 2) | 5.1, 5.4, 6.2 |
+| sign-off on incomplete parasitics or at one corner only | hold failures missed (default margins: at ff in 5 of 7 layouts, at tt with maximum parasitics in 2) | 5.1, 5.4, 6.2 |
 | per-corner slacks of a run that never reached `STAPostPNR` | pre-placement values, unmarked | 6.2 |
 | OpenSTA's Tcl slack commands read as ns or ps (they return seconds) | hold violations logged as −0.0 | 6.2 |
 | a reused result skipped because its file exists | power of the previous netlist | 8.6 |
@@ -320,7 +320,7 @@ flow's template (`tools/reference_flow/config.template.yaml`) is an example, wit
 | `ENDCAP_CELL` | `decap_3` (hd default; `ms` and `hs` use `decap_4`) | Endcaps remain decaps even with `DECAP_CELLS: []`: 1 200–1 850 cells, about 4–6 nW. Negligible, but "decap-free" is not literal. |
 | `RUN_HEURISTIC_DIODE_INSERTION: false`, `DIODE_ON_PORTS: none` | the defaults | Antenna diodes are silicon robustness (header): leave them out of a measurement; on for a tapeout (section 12). Heuristic insertion also broke legalisation at high utilisation. |
 | `RUN_ANTENNA_REPAIR: false`, `DRT_ANTENNA_REPAIR_ITERS: 0` | | Antenna violations are reported, not gated. Measurement only. In LibreLane, `RUN_ANTENNA_REPAIR` stops only the repair after global routing; a second loop after detailed routing (`DRT_ANTENNA_REPAIR_ITERS`, default 3, active whenever the PDK sets `DIODE_CELL`) checks antennas, inserts diodes and routes again. On a 28 000-cell core it inserted 1 232 diodes after routing had reached 0 violations, and the second routing started at 8 723 violations: double the routing time, cells the measurement does not want, and a risk for convergence. |
-| hold slack margins | the defaults for a measurement-only project: 0.1 ns in the repair after CTS (`PL_RESIZER_HOLD_SLACK_MARGIN`); `GRT_RESIZER_HOLD_SLACK_MARGIN` (0.05 ns) acts only with `RUN_POST_GRT_RESIZER_TIMING: true`, which is off by default | Hold must be met at every sign-off corner with full parasitics (6.2); a margin above that is silicon insurance, not correctness. A 0.5 ns overfix cost about 0.6 µW (8 %) in a 7–9 µW design (5.6 times the hold buffers in another). **With the defaults, hold can fail at the fast corner:** three layouts of two decoder designs (56 000 and 96 000 cells, hardened with port buffers and before remedy B) met hold at nominal tt (+0.05 to +0.12 ns) and failed at `ff_n40C_1v95` (−0.12 to −0.17 ns with maximum parasitics, 12 to 374 endpoints), and two of them also at tt with maximum parasitics (−0.01 and −0.03 ns): "met at tt" held for nominal parasitics only. With 0.5 ns margins all 9 corners passed (≥ +0.30 ns). Two cores hardened under the current settings (no port buffers, remedy B; a 570-cell SRAM22 design and the 34 000-cell adder-tree core of 1.1) met hold at all 9 corners with the defaults (+0.18 and +0.12 ns at ff). A sign-off at tt only accepts a failing layout without a word. **The repairs cannot see the parasitic corners:** both resizer steps repair at all 9 `STA_CORNERS` (`RSZ_CORNERS` unset), but they estimate wires with the tech LEF's RC at every corner unless `LAYERS_RC` sets per-corner values (`set_rc.tcl`), while sign-off reads the min, nom and max SPEFs. In the failing layouts `max_ff` was 0.055–0.06 ns worse than `nom_ff`; the worst paths crossed gated clock subtrees (the worst: launch at 1.86 ns clock latency, capture at 2.51 ns). `RUN_POST_GRT_RESIZER_TIMING: true` repairs again on the global routes (setup, then hold, then legalisation and a second global routing; LibreLane calls it experimental, with possible hangs and long run times), which removes the placement-to-routing error but not that spread. Choose and document the margin, and sign off hold at every corner (6.2). |
+| hold slack margins | the defaults for a measurement-only project: 0.1 ns in the repair after CTS (`PL_RESIZER_HOLD_SLACK_MARGIN`); `GRT_RESIZER_HOLD_SLACK_MARGIN` (0.05 ns) acts only with `RUN_POST_GRT_RESIZER_TIMING: true`, which is off by default | Hold must be met at every sign-off corner with full parasitics (6.2); a margin above that is silicon insurance, not correctness. A 0.5 ns overfix cost about 0.6 µW (8 %) in a 7–9 µW design (5.6 times the hold buffers in another). **With the defaults, hold can fail at the fast corner:** three layouts of two decoder designs (56 000 and 96 000 cells, hardened with port buffers and before remedy B) met hold at nominal tt (+0.05 to +0.12 ns) and failed at `ff_n40C_1v95` (−0.12 to −0.17 ns with maximum parasitics, 12 to 374 endpoints), and two of them also at tt with maximum parasitics (−0.01 and −0.03 ns): "met at tt" held for nominal parasitics only. With 0.5 ns margins all 9 corners passed (≥ +0.30 ns). Two cores hardened under the current settings (no port buffers, remedy B; a 570-cell SRAM22 design and the 34 000-cell adder-tree core of 1.1) met hold at all 9 corners with the defaults (+0.18 and +0.12 ns at ff). A latch core under the current settings (56 000 cells, 12 700 latches in rows behind 113 clock gates, 9.2) did not, at two utilisations: −0.057 and −0.089 ns at `max_ff`, also −0.02 and −0.06 ns at `nom_ff` (nominal parasitics), 11 and 17 endpoints, with +0.15 and +0.09 ns at nominal tt. A sign-off at tt only accepts a failing layout without a word. **The repairs cannot see the parasitic corners:** both resizer steps repair at all 9 `STA_CORNERS` (`RSZ_CORNERS` unset), but they estimate wires with the tech LEF's RC at every corner unless `LAYERS_RC` sets per-corner values (`set_rc.tcl`), while sign-off reads the min, nom and max SPEFs. In the failing layouts `max_ff` was 0.055–0.06 ns worse than `nom_ff`; the worst paths crossed gated clock subtrees (the worst: launch at 1.86 ns clock latency, capture at 2.51 ns). `RUN_POST_GRT_RESIZER_TIMING: true` repairs again on the global routes (setup, then hold, then legalisation and a second global routing; LibreLane calls it experimental, with possible hangs and long run times), which removes the placement-to-routing error but not that spread. Choose and document the margin, and sign off hold at every corner (6.2). |
 | `*_HOLD_MAX_BUFFER_PCT` | 80 (default 50) | Hold buffers are numerous: 15 % of the cells in one design. LibreLane reports them as `design__instance__count__hold_buffer`. |
 | `DESIGN_REPAIR_BUFFER_INPUT_PORTS: false`, `DESIGN_REPAIR_BUFFER_OUTPUT_PORTS: false` | false for a measurement (defaults true); true for a tapeout (section 12) | One buffer per port (in LibreLane 3.0.16 the delay cell `clkdlybuf4s25_1`, 1.1). They give a stand-alone chip defined loads and drives at its pins; a block measured as a part of an SoC needs none. Their power follows the ports' activity: 1 % of the dynamic power of a 700-cell reference design with 122 ports. Without output buffers, the block's own output drivers carry the SDC's output load (`OUTPUT_CAP_LOAD`, 33.4 fF by default, 8.8): set a load that fits the block's place in the SoC, and state it. |
 | `EXTRA_EXCLUDED_CELLS: ["sky130_fd_sc_hd__clkdlybuf4s*"]` | (default none) | OpenROAD `dcf3613` picks the delay cells `clkdlybuf4s*` as ordinary buffers in design repair (1.1; OpenROAD #10622). Excluding them cut cell area 2 % on an example with nothing worse; hold repair keeps `dlygate*`. Write the list in the configuration file: through `--override-config` the quotes reach Tcl and stop the flow. Remove it when upstream fixes the buffer choice. |
@@ -363,9 +363,10 @@ hand ran 2.8 days before anyone noticed.
   accepts on LibreLane's worst setup and hold slack over all its STA corners (stricter than LibreLane's own checkers,
   6.2), plus an optional own sign-off (`SIGNOFF_CMD`). It varies `FP_CORE_UTIL`, which has no effect with
   `FP_SIZING: absolute` (SRAM22 floorplans, 5.5): there, vary the die size. Its runs go next to the configuration, so
-  give two ladders different configuration directories. It stops on a crash, and it refuses to start when one of its
-  run directories (`runs/u<U>`) exists, unless `OVERWRITE=1`. `tools/reference_flow/harden.sh` does the same for the
-  reference design.
+  give two ladders different configuration directories. It stops on a crash and on disconnected pins after routing (a
+  tool bug, 9.2), and it refuses to start when one of its run directories (`runs/u<U>`) exists, unless `OVERWRITE=1`.
+  `PRE_CTS_TCL` runs an OpenROAD script on the placed database before CTS (9.2). `tools/reference_flow/harden.sh`
+  does the same for the reference design.
 
 **5.4 Escaped hierarchical names: the costliest silent error.** Kept hierarchy and generate blocks appear in the routed
 netlist as `\u_rom.u_col_0/_307_`, `\g_ws[9].u_icg` or `\u_demux/_000_`.
@@ -718,6 +719,23 @@ one cycle after the last word.
   latch memories set `LINTER_ERROR_ON_LATCH: false`, which keeps the other lint errors, rather than `RUN_LINTER: false`;
   the latch count after synthesis (4) catches unintended latches.
 - **One gated clock per row means many gated clock nets:** set `CTS_APPLY_NDR: none` (5.1).
+- **CTS can leave a row clock gate without its clock** (OpenROAD `dcf3613`, LibreLane 3.0.16 and 3.0.17). CTS moves
+  every clock gate to the centre of its sinks; when that point is already an instance's location, its H-tree builder
+  overwrites one entry and that gate's `CLK` stays unconnected (OpenROAD issue #9816, fixed by PR #9864 on
+  2026-03-27, after `dcf3613`). The row is then never written. It hit 3 of 4 layouts of two latch cores with 113 and
+  165 row clock gates on one gated clock (one gate each time), and none of the cores with few gates per clock net
+  checked so far. LibreLane stops at its disconnected-pins checker, but only after detailed routing;
+  `harden_ladder.sh` stops there too instead of trying a sparser utilisation. Twelve CTS option changes on a failing layout (macro clustering sizes
+  and diameters, no sink clustering, balanced levels, no dummy loads, no insertion delay, obstruction awareness on and
+  off, one clustering level, no buffer distance, no wire-length repair) all lost the same gate; a macro clustering
+  size of 1 lost all 113. **Workaround: place each clock gate at the centre of its sinks and fix it there before CTS**
+  (`PRE_CTS_TCL=tools/firm_clock_gates.tcl` with `harden_ladder.sh`): the script makes CTS's move itself, legalises it
+  and sets the gates FIRM, and CTS does not move a fixed gate. Both failing layouts then kept every clock, and CTS
+  inserted as many clock repeaters as without the workaround. Fixing the gates where global placement left them is not enough: there
+  they sat 660 µm on average from the centre of their rows (1.1 mm die), CTS added 200 repeaters on their clock wires,
+  global routing detoured 29 clock nets by more than 500 µm (2 without the workaround), and hold failed by 0.36 and 0.49 ns at the
+  two utilisations, against 0.06 and 0.09 ns with the gates at the centre (5.1).
+  `tools/check_clock_gates.py <netlist>` checks a netlist written after CTS in seconds.
 - **Gate latch rows with `dlclkp` instantiated directly** (glitch-free enable, plain name, recognised by the root-clock
   correction).
 - **Gate-level simulation does not check latch timing** (timing checks are dropped). STA and the bit-exact comparison
@@ -774,6 +792,7 @@ and `hvl` (1.1).
 | every SDC exception matched at least one object | yes |
 | latches and flip-flops after synthesis | the numbers the RTL declares |
 | routing DRC errors, power-grid violations | 0, 0 |
+| clock gates without a clock input after CTS (`check_clock_gates.py`, LibreLane's disconnected-pins checker) | 0 (9.2) |
 | post-route slew violations at nominal tt (`design__max_slew_violation__count__corner:nom_tt_025C_1v80`) | no jump against the previous flow or version (a jump: weak buffer trees, 1.1) |
 | setup and hold at the sign-off corners, with every net's parasitics | met |
 | gate-level outputs against RTL outputs | bit-exact over the whole window |
@@ -855,3 +874,4 @@ When tapeout work verifies any of this, report it through the inbox; it will get
 | 6.5 | 2026-11-01 | monthly review. Upstream: per-corner metrics are post-route only after `STAPostPNR` (6.2, tools check it); OpenROAD #11653 is not fixed by #11754 and got worse in 26Q4 (5.1); OpenSTA #539 fixed upstream, not in our version (8.1). From the projects: the faulty CPU 0 and crashes before 2026-10-29 (0, 1.1); remedy A measured: −8 % energy at tt, −19 % at 1.28 V, one utilisation step lost (1.1); routability sensitive to small netlist changes (1.1); default hold margins fail hold at ff, the global-routing margin is inactive by default (5.1); crashes and reused tags in the ladder (5.3, tool updated); glob instead of `-regexp` for exceptions (6.1); OpenSTA's Tcl slacks in seconds (6.2, `signoff_sta.tcl` prints ns too); skip on a stamp, not on a file (8.6); a memory figure (0); four silent-error rows |
 | 6.6 | 2026-11-03 | from the inbox and the reference validation: the default-margin hold data corrected (3 of 5 layouts, two of them also at tt with maximum parasitics; two cores under the current settings passed) (5.1); delay-cell fanout trees slow the slews: +8–9 % power on two decoders, a slew check (1.1, 10, one silent-error row); LibreLane's `STAPostPNR` equals an own sign-off, its per-corner metrics are usable (5.4, 6.2); the clock NDR and `GRT-0273` on a latch core that did not route (5.1, 9.2) |
 | 6.7 | 2026-11-03 | the resizer estimates every corner with the tech LEF's RC, so no repair sees the min/max parasitic spread; what `RUN_POST_GRT_RESIZER_TIMING` does (5.1) |
+| 6.8 | 2026-11-03 | from the reference validation: OpenROAD `dcf3613`'s CTS leaves a clock gate without its clock (#9816), the workaround `firm_clock_gates.tcl` (gates placed at the centre of their sinks, then fixed) and the check `check_clock_gates.py`; `harden_ladder.sh` stops on disconnected pins and takes `PRE_CTS_TCL` (5.3, 9.2, 10); a latch core failed hold at ff with the default margins (5.1) |

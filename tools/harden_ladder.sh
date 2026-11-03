@@ -13,12 +13,17 @@
 # values; LibreLane issue #1040). If SIGNOFF_CMD is set, it is
 # run as `$SIGNOFF_CMD <run dir>` after those checks and must exit 0 as well (your own sign-off, notes 6.2).
 # A crashed attempt (a signal such as "Signal 11 received", "Segmentation fault", "Illegal instruction", "stack
-# smashing") says nothing about routability: the ladder stops there instead of trying a sparser utilisation.
+# smashing") says nothing about routability: the ladder stops there instead of trying a sparser utilisation. So does
+# an attempt that LibreLane stops for disconnected pins after routing: in OpenROAD dcf3613 that is CTS losing a clock
+# gate's clock input (issue #9816, sky130 notes 9.2), a tool bug and not a routing result; PRE_CTS_TCL works around it.
 # Existing runs with the ladder's tags (runs/u<U> beside the configuration) are never overwritten unless OVERWRITE=1.
 # Environment (defaults in brackets):
 #   LIBRELANE [/media/hardware_design_tools/librelane]   PDK_ROOT [/media/pdk/sky130_8afc834]   PDK [sky130A]
 #   DENSITY_ADD [10]: PL_TARGET_DENSITY_PCT = utilisation + DENSITY_ADD, at most 95
 #   LAST_STEP [OpenROAD.STAPostPNR]   EXTRA_OVERRIDES: more "KEY=VALUE" overrides, space separated (JSON values)
+#   PRE_CTS_TCL: an OpenROAD script run on the placed database before CTS (ODB=<file>, rewritten in place); the attempt
+#   then runs in two LibreLane calls on the same run directory (--to OpenROAD.DetailedPlacement, --from OpenROAD.CTS).
+#   tools/firm_clock_gates.tcl is the workaround for the lost clock-gate inputs above.
 #   watchdog: WD_VIOL3 [500000] after 3 routing iterations, WD_VIOL6 [20000] after 6, WD_VIOL10 [3000] after 10,
 #             WD_IDLE_H [12] hours without a finished iteration, WD_MAX_H [36] hours for any attempt
 #   JOBQ_THREADS (set by jobq): routing threads (DRT_THREADS) and LibreLane's worker limit (-j; also caps the parallel
@@ -109,10 +114,18 @@ for U in $UTILS; do
   OVR=(--override-config "FP_CORE_UTIL=$U" --override-config "PL_TARGET_DENSITY_PCT=$DENS"
        --override-config "DRT_THREADS=$THREADS")
   for o in ${EXTRA_OVERRIDES:-}; do OVR+=(--override-config "$o"); done
-  ( cd "$WORK" && export _OPENLANE_MAX_CORES="$THREADS" && exec setsid nice -n 19 \
-      nix --extra-experimental-features "nix-command flakes" develop --accept-flake-config "$LIBRELANE" -c \
-      python3 -m librelane -j "$THREADS" --pdk-root "$PDK_ROOT" --pdk "$PDK" --manual-pdk --run-tag "$TAG" --overwrite \
-      --to "$LAST_STEP" "${OVR[@]}" "$CFG" ) > "$LOG" 2>&1 &
+  ( cd "$WORK" && export _OPENLANE_MAX_CORES="$THREADS" THREADS PDK_ROOT TAG LIBRELANE LAST_STEP \
+      PRE_CTS_TCL="${PRE_CTS_TCL:-}" && exec setsid nice -n 19 bash -c '
+    set -euo pipefail
+    cfg=$1; shift
+    dev=(nix --extra-experimental-features "nix-command flakes" develop --accept-flake-config "$LIBRELANE" -c)
+    ll=(python3 -m librelane -j "$THREADS" --pdk-root "$PDK_ROOT" --pdk "$PDK" --manual-pdk --run-tag "$TAG")
+    [[ -n "$PRE_CTS_TCL" ]] || exec "${dev[@]}" "${ll[@]}" --overwrite --to "$LAST_STEP" "$@" "$cfg"
+    "${dev[@]}" "${ll[@]}" --overwrite --to OpenROAD.DetailedPlacement "$@" "$cfg"
+    odb=$(ls -t "$(dirname "$cfg")/runs/$TAG"/*-openroad-detailedplacement/*.odb | head -n 1)
+    echo "PRE_CTS_TCL: $PRE_CTS_TCL on $odb"
+    ODB="$odb" "${dev[@]}" openroad -exit -no_splash "$PRE_CTS_TCL"
+    exec "${dev[@]}" "${ll[@]}" --from OpenROAD.CTS --to "$LAST_STEP" "$@" "$cfg"' bash "$CFG" "${OVR[@]}" ) > "$LOG" 2>&1 &
   ACTIVE=$!
   STOPPED=$(watchdog "$(dirname "$CFG")/runs/$TAG")
   wait "$ACTIVE" || true; ACTIVE=""
@@ -124,6 +137,10 @@ for U in $UTILS; do
     CRASH=$(grep -m1 -aoE 'Signal (4|6|7|8|11) received|Segmentation fault|Illegal instruction|stack smashing detected|Bus error' "$LOG" || true)
     if [[ "$VERDICT" != pass && -n "$CRASH" ]]; then
       VERDICT="crashed ($CRASH): not a routability result, ladder stopped; rerun this utilisation"; CRASHED=$U
+    elif [[ "$VERDICT" != pass ]] && grep -qa 'critical disconnected pins found' "$LOG"; then
+      PINS=$(grep -ahoE "instance '[^']+' are not connected" "$RUN/error.log" "$LOG" 2> /dev/null | sort -u | tr '\n' ' ' || true)
+      VERDICT="disconnected pins after routing ($PINS): a tool bug, not a routability result (sky130 notes 9.2), ladder stopped"
+      CRASHED=$U
     fi
     if [[ "$VERDICT" == pass && -n "${SIGNOFF_CMD:-}" ]]; then
       $SIGNOFF_CMD "$RUN" > "$WORK/logs/signoff_$TAG.log" 2>&1 || VERDICT="own sign-off failed (logs/signoff_$TAG.log)"
@@ -154,5 +171,5 @@ json.dump(summary, open(out, "w"), indent=1)
 PY
 rm -f "$ATTEMPTS"
 [[ -n "$ACCEPTED" ]] && { echo "accepted at $ACCEPTED %: $WORK/runs/accepted"; exit 0; }
-[[ -n "$CRASHED" ]] && { echo "crashed at $CRASHED % (see $WORK/logs/librelane_u$CRASHED.log); see $WORK/ladder.json"; exit 1; }
+[[ -n "$CRASHED" ]] && { echo "stopped at $CRASHED % by a crash or a tool bug (see $WORK/logs/librelane_u$CRASHED.log); see $WORK/ladder.json"; exit 1; }
 echo "no utilisation passed; see $WORK/ladder.json"; exit 1

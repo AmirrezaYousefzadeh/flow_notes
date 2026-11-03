@@ -22,5 +22,9 @@ The project never hardened this variant, so there is no project result to compar
                                    size-dependent line), header comment changed
   LibreLane settings (design.sh CONFIG_EXTRA): those of lmem2g, plus CTS_APPLY_NDR none (sky130 notes 5.1: designs with
   many gated clock nets; lmem2g's global router dropped the clock NDR on 725 nets to reduce congestion, GRT-0273).
+  FIRM_CLOCK_GATES 1 (added 2026-11-03): the first run lost the clock input of one row clock gate in CTS at both
+  utilisations (u_icg_j11 at 30 %, u_icg_r93 at 20 %; OpenROAD issue #9816, sky130 notes 9.2). With the gates fixed
+  where global placement left them, hold failed by 0.36 and 0.49 ns (clock-wire detours); placed at the centre of
+  their rows first, by 0.057 and 0.089 ns, at ff only (sky130 notes 5.1).
 Testbench defines as for lmem2g, with N_BINS 50 and the stimulus above; SDF simulation (SIM_MODE sdf), which lmem2g's
 size did not allow.

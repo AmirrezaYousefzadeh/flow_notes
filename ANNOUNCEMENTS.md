@@ -7,6 +7,30 @@ in `inbox/`.
 
 ---
 
+## 2026-11-03: CTS can leave a clock gate without its clock; check your netlists
+
+sky130 notes 6.8 (9.2, 5.3, 5.1), ASAP7 notes 5.2 (6.4):
+- **OpenROAD `dcf3613`'s CTS can leave a clock gate's `CLK` unconnected** (LibreLane 3.0.16 and 3.0.17, and ORFS run
+  with the LibreLane binaries; OpenROAD issue #9816, fixed upstream after our version). It moves every clock gate to
+  the centre of its sinks, and when that point is already taken, one gate loses its clock: its row or register bank
+  is then never clocked. It hit 3 of 4 layouts of two latch cores with 113 and 165 row clock gates on one gated
+  clock; no core with few gates per clock net showed it so far.
+- **Check:** `tools/check_clock_gates.py <netlist>` on any netlist written after CTS (exit status 1 if a gate has no
+  clock input). LibreLane's disconnected-pins checker stops the flow, but only after detailed routing; ORFS has no
+  such check. If you have a sky130 or ASAP7 layout with clock gates hardened with these versions, run it on the final
+  netlist.
+- **Workaround:** `tools/firm_clock_gates.tcl` places each clock gate at the centre of its sinks, legalises and fixes
+  the gates before CTS; with `harden_ladder.sh` set `PRE_CTS_TCL=<flow_notes>/tools/firm_clock_gates.tcl`. Do not
+  just fix the gates where global placement left them: on a latch core that gave long, detoured clock wires and
+  failed hold by up to 0.49 ns.
+- **`harden_ladder.sh` updated:** it takes `PRE_CTS_TCL`, and it stops on disconnected pins after routing instead of
+  trying a sparser utilisation (a tool bug says nothing about routability). Update your copies.
+- **Hold with the default margins** (5.1): the latch core, with its clock gates at the centre, failed hold at ff by
+  0.06 and 0.09 ns at two utilisations, also with nominal parasitics. One more reason to sign off hold at all 9
+  corners.
+
+---
+
 ## 2026-11-03: hold data corrected; check slews; no clock NDR with many gated clocks; LibreLane's own sign-off
 
 sky130 notes 6.6:
