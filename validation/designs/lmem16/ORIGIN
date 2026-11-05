@@ -26,5 +26,7 @@ The project never hardened this variant, so there is no project result to compar
   utilisations (u_icg_j11 at 30 %, u_icg_r93 at 20 %; OpenROAD issue #9816, sky130 notes 9.2). With the gates fixed
   where global placement left them, hold failed by 0.36 and 0.49 ns (clock-wire detours); placed at the centre of
   their rows first, by 0.057 and 0.089 ns, at ff only (sky130 notes 5.1).
+  PL_RESIZER_HOLD_SLACK_MARGIN 0.2 (owner's decision, 2026-11-06): RUN_POST_GRT_RESIZER_TIMING found no violation on the
+  global routes and changed nothing (still -0.079 ns at max_ff); 0.2 ns passed all 9 corners at 30 % (+0.12 ns).
 Testbench defines as for lmem2g, with N_BINS 50 and the stimulus above; SDF simulation (SIM_MODE sdf), which lmem2g's
 size did not allow.

@@ -20,9 +20,12 @@ MACRO_INSTANCES=""
 # buffers on long clock wires, which the project needed to close hold on the write-clock domain (16 ns latency without);
 # the latch rows are intended (written as always @* if (gate) ...), so Verilator's LATCH is not a lint error (notes 9.2);
 # no clock NDR for a design with one gated clock per latch row (notes 5.1: the 64-neuron core's global router dropped
-# the NDR on 725 clock nets "to reduce congestion", GRT-0273, and the core never routed)
+# the NDR on 725 clock nets "to reduce congestion", GRT-0273, and the core never routed); a 0.2 ns hold margin after
+# CTS: with the default 0.1 ns hold failed at ff by 0.06 and 0.09 ns, the repair after global routing changed nothing,
+# and 0.2 ns passed all 9 corners (sky130 notes 5.1)
 CONFIG_EXTRA="LINTER_ERROR_ON_LATCH: false
 CTS_APPLY_NDR: none
+PL_RESIZER_HOLD_SLACK_MARGIN: 0.2
 PL_RESIZER_SETUP_SLACK_MARGIN: 0
 GRT_RESIZER_SETUP_SLACK_MARGIN: 0
 CTS_DISTANCE_BETWEEN_BUFFERS: 150
