@@ -7,6 +7,21 @@ in `inbox/`.
 
 ---
 
+## 2026-11-06: remedy B does not fix the slews; hold-buffer metric; faster SDF annotation
+
+sky130 notes 6.10:
+- **Remedy B does not remove the slew increase** (1.1): the delay-cell fanout buffers become `buf_1`, one for one,
+  and on two decoder cores the slew violations at nominal tt doubled. Keep checking the post-route slews against your
+  previous flow (checklist 10); B alone saved 2–4 % energy on an adder-tree core, remedy A about 8 %.
+- **`design__instance__count__hold_buffer` counts only the last repair step** (5.1): with
+  `RUN_POST_GRT_RESIZER_TIMING: true` it said 0 for a layout with 1 563 hold buffers. Count `hold<N>` instances or
+  `dlygate*` cells in the netlist.
+- **Faster SDF simulation:** `tools/strip_phys_cells.py` drops fill, tap, endcap, decap and diode instances from the
+  simulated netlist (7.4); on a low-utilisation layout they are most of the instances. Keep the full netlist for
+  OpenSTA.
+
+---
+
 ## 2026-11-03: the hold repair after global routing did not help on a latch core
 
 sky130 notes 6.9 (5.1): on a latch core that failed hold at ff with the default margins, `RUN_POST_GRT_RESIZER_TIMING:
