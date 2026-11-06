@@ -33,8 +33,27 @@ after 36 h; the global router had dropped the NDR on 725 clock nets "to reduce c
 had routed it at 30 %. A set that takes days cannot be rerun after every tool change, so the owner agreed to a
 smaller core: `lmem16` is the same RTL and testbench with 16 instead of 64 hidden neurons (`designs/lmem16/ORIGIN`).
 
-The first stored set (the current defaults, LibreLane 3.0.16, open_pdks `8afc834`, ORFS `ef2cb37`, OSS CAD Suite
-2026-10-24) is being produced; until then the results below are the reference.
+`lmem16` also needed two workarounds, both in its `design.sh` and `ORIGIN`:
+- Its clock gates are placed at the centre of their rows and fixed before CTS (`FIRM_CLOCK_GATES`). Without this,
+  OpenROAD `dcf3613`'s CTS left one row clock gate without its clock (sky130 notes 9.2).
+- It uses a 0.2 ns hold margin after CTS, by the owner's decision. With the default 0.1 ns, hold failed at ff
+  (sky130 notes 5.1).
+
+## Stored set `results/2026-11-06_defaults`
+
+The current defaults: LibreLane 3.0.16, open_pdks `8afc834`, ORFS `ef2cb37` (ASAP7 SRAM-Vt), OSS CAD Suite 2026-10-24
+(Icarus 14). Every check passes: DRC 0, setup and hold met (9 corners for sky130), SDF errors 0, testbenches pass.
+Every later set is compared with this one.
+
+| design | accepted utilisation | cells | hold buffers | worst hold | power (window average) | run time |
+|---|---|---|---|---|---|---|
+| `sram_probe` | 30 % | 566 | 4 | +0.179 ns | 2.450 µW | 1 min |
+| `lmem16` | 30 % | 39 390 | 700 | +0.124 ns | 0.628 µW (2.51 nJ per bin) | 119 min |
+| `snn2_d` | 30 % | 35 702 | 1 | +0.125 ns | 0.384 µW | 140 min |
+| `min32_asap7` | 60 % | 16 667 | (ORFS) | +0.044 ns (TT) | 0.477 µW | 16 min |
+
+Cells exclude tap cells. The powers include leakage and the root-clock correction. Run times are for one `jobq` job
+each, with 4 threads, once the job had started.
 
 ## Previous procedure
 

@@ -1,0 +1,74 @@
+{
+ "design": "min32_asap7",
+ "minutes": 16,
+ "harden": {
+  "accepted_utilisation_pct": 60,
+  "attempts": [
+   {
+    "utilisation_pct": "60",
+    "minutes": "16",
+    "verdict": "pass"
+   }
+  ],
+  "cells": 16667,
+  "cell_area_um2": 1856.84,
+  "drc_errors": 0,
+  "max_slew_violations": 0,
+  "setup_ws_ns": 119.7122543317164,
+  "hold_ws_ns": 0.04437640532817255,
+  "tap_cells": 617,
+  "signoff": {
+   "TT": {
+    "hold_ws_ns": 0.06869842195111886,
+    "setup_ws_ns": 119.81934733285016,
+    "hold_tns_ns": 0.0,
+    "setup_tns_ns": 0.0
+   },
+   "SS": {
+    "hold_ws_ns": 0.10723089083342074,
+    "setup_ws_ns": 119.7122543317164,
+    "hold_tns_ns": 0.0,
+    "setup_tns_ns": 0.0
+   },
+   "FF": {
+    "hold_ws_ns": 0.04437640532817255,
+    "setup_ws_ns": 119.87782500000321,
+    "hold_tns_ns": 0.0,
+    "setup_tns_ns": 0.0
+   }
+  },
+  "versions": {
+   "librelane": "/media/hardware_design_tools/librelane-3.0.16",
+   "pdk": "open_pdks 8afc8346a57fe1ab7934ba5a6056ea8b43078e71",
+   "icarus": "Icarus Verilog version 14.0 (devel) (s20260301-664-g9cfecc9c9-dirty)",
+   "orfs": "/media/pdk/OpenROAD-flow-scripts-ef2cb37 7acd9816c",
+   "flow_notes": "b8bf699"
+  }
+ },
+ "measure": {
+  "p_total_uW": 0.476949358781769,
+  "p_leak_uW": 0.4577419,
+  "p_dyn_uW": 0.01920745878176902,
+  "p_sta_uW": 0.9780923,
+  "root_clock_removed_uW": 0.501142941218231,
+  "clock_duty": 0.00100599999497,
+  "window_s": 0.20000000099999998,
+  "units": 50,
+  "unit": "bin",
+  "root_cells_missing_in_B": 0,
+  "e_bin_nJ": 1.9077974446660628,
+  "e_dyn_bin_nJ": 0.07682983551122524,
+  "pin_activities": 84275,
+  "sdf_errors": 0,
+  "bit_exact": null,
+  "sim_mode": "sdf",
+  "gls_minutes": 0,
+  "versions": {
+   "librelane": "/media/hardware_design_tools/librelane-3.0.16",
+   "pdk": "open_pdks 8afc8346a57fe1ab7934ba5a6056ea8b43078e71",
+   "icarus": "Icarus Verilog version 14.0 (devel) (s20260301-664-g9cfecc9c9-dirty)",
+   "orfs": "/media/pdk/OpenROAD-flow-scripts-ef2cb37 7acd9816c",
+   "flow_notes": "b8bf699"
+  }
+ }
+}
