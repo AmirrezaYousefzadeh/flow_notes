@@ -7,6 +7,24 @@ in `inbox/`.
 
 ---
 
+## 2026-11-06: hold-margin rule decided; LibreLane reruns can differ
+
+sky130 notes 6.13 and 6.14:
+- **Hold margins** (5.1, 5.3): start with LibreLane's defaults (0.1 ns after CTS). If hold fails at any of the 9
+  sign-off corners, harden the **same utilisation** again with `PL_RESIZER_HOLD_SLACK_MARGIN` raised in 0.1 ns steps,
+  and state the accepted margin with every number; a sparser utilisation does not fix hold. `tools/harden_ladder.sh`
+  now does this (runs `u<U>_hold<margin>`, up to 0.5 ns, where it stops; an own sign-off reports a hold-only failure
+  with exit status 3). If you use a copy of the ladder, update it.
+- **Two runs of one configuration can differ** (11): LibreLane 3.0.16 hands OpenROAD the excluded-cell list in the
+  order of a Python set, which changes in every run, and OpenROAD breaks ties by it. One CTS step repeated on the
+  same input gave two different layouts, about half the time each; three hardenings of one configuration ended at
+  −0.057, −0.057 and −0.003 ns worst hold. With `PYTHONHASHSEED=0` exported before LibreLane starts, that step gave
+  the same layout in 6 of 6 runs (a whole hardening not yet compared). To compare two runs or reproduce a layout, fix
+  the seed in both; without it, a slack a few hundredths of a ns from zero, and the hold margin a ladder accepts, can
+  change between reruns.
+
+---
+
 ## 2026-11-06: own sign-off loses the derating with resolved.json; post-GRT repairs measured
 
 sky130 notes 6.12:

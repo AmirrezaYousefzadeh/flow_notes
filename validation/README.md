@@ -55,6 +55,12 @@ Every later set is compared with this one.
 Cells exclude tap cells. The powers include leakage and the root-clock correction. Run times are for one `jobq` job
 each, with 4 threads, once the job had started.
 
+LibreLane's runs are not always bit-identical: Python's hash randomisation changes the order of the excluded-cell
+list that OpenROAD gets, and OpenROAD breaks ties by it (sky130 notes 11). These numbers were hardened without a
+fixed `PYTHONHASHSEED`. A rerun of `lmem16`'s accepted configuration on 2026-11-06 still gave the stored layout to the
+last digit (its CTS result had differed, and the next step erased the difference); one rerun with the default
+0.1 ns margin did not reproduce an earlier one (worst hold −0.003 instead of −0.057 ns).
+
 ## Previous procedure
 
 Until 2026-10-29 only the SRAM22 design was validated, with a private copy of its project's flow (`neat_ref/`, not in
