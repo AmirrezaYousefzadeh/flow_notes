@@ -94,6 +94,7 @@ summary = {
     "antenna_violating_nets": m.get("antenna__violating__nets"),
     "slew_violations_nom_tt": m.get("design__max_slew_violation__count__corner:nom_tt_025C_1v80"),
     "output_cap_load_fF": json.load(open(f"{run}/resolved.json")).get("OUTPUT_CAP_LOAD"),
+    "hold_margin_ns": json.load(open(f"{run}/resolved.json")).get("PL_RESIZER_HOLD_SLACK_MARGIN"),
     "clock_gates_fixed_before_cts": bool(os.environ.get("PRE_CTS_TCL")), "versions": versions}
 json.dump(summary, open(f"{work}/harden.json", "w"), indent=1)
 print(json.dumps({k: v for k, v in summary.items() if k not in ("attempts", "versions")}))

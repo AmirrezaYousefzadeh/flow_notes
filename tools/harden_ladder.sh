@@ -11,16 +11,24 @@
 # the typical corners only and do not run with --to OpenROAD.STAPostPNR), design__power_grid_violation__count 0, and a
 # STAPostPNR step in the run (without it, RUN_MCSTA: false or an earlier LAST_STEP, the slacks are pre-placement
 # values; LibreLane issue #1040). If SIGNOFF_CMD is set, it is
-# run as `$SIGNOFF_CMD <run dir>` after those checks and must exit 0 as well (your own sign-off, notes 6.2).
+# run as `$SIGNOFF_CMD <run dir>` after those checks and must exit 0 as well (your own sign-off, notes 6.2); exit
+# status 3 tells the ladder that hold alone failed (the hold retry below).
 # A crashed attempt (a signal such as "Signal 11 received", "Segmentation fault", "Illegal instruction", "stack
 # smashing") says nothing about routability: the ladder stops there instead of trying a sparser utilisation. So does
 # an attempt that LibreLane stops for disconnected pins after routing: in OpenROAD dcf3613 that is CTS losing a clock
 # gate's clock input (issue #9816, sky130 notes 9.2), a tool bug and not a routing result; PRE_CTS_TCL works around it.
-# Existing runs with the ladder's tags (runs/u<U> beside the configuration) are never overwritten unless OVERWRITE=1.
+# An attempt that fails on hold alone (in LibreLane's metrics, or in the own sign-off with exit status 3) is repeated
+# at the same utilisation with PL_RESIZER_HOLD_SLACK_MARGIN raised by HOLD_MARGIN_STEP (tag u<U>_hold<margin>), up to
+# HOLD_MARGIN_MAX; a sparser utilisation does not fix hold (sky130 notes 5.1). Hold still failing at the limit stops
+# the ladder. Any other failure tries the next utilisation.
+# Existing runs with the ladder's tags (runs/u<U>, runs/u<U>_hold* beside the configuration) are never overwritten
+# unless OVERWRITE=1.
 # Environment (defaults in brackets):
 #   LIBRELANE [/media/hardware_design_tools/librelane]   PDK_ROOT [/media/pdk/sky130_8afc834]   PDK [sky130A]
 #   DENSITY_ADD [10]: PL_TARGET_DENSITY_PCT = utilisation + DENSITY_ADD, at most 95
 #   LAST_STEP [OpenROAD.STAPostPNR]   EXTRA_OVERRIDES: more "KEY=VALUE" overrides, space separated (JSON values)
+#   HOLD_MARGIN_STEP [0.1], HOLD_MARGIN_MAX [0.5]: the hold retries above, in ns (the first attempt at each utilisation
+#   uses the configuration's margin, LibreLane's default 0.1 if it sets none)
 #   PRE_CTS_TCL: an OpenROAD script run on the placed database before CTS (ODB=<file>, rewritten in place); the attempt
 #   then runs in two LibreLane calls on the same run directory (--to OpenROAD.DetailedPlacement, --from OpenROAD.CTS).
 #   tools/firm_clock_gates.tcl is the workaround for the lost clock-gate inputs above.
@@ -36,6 +44,7 @@ LIBRELANE="${LIBRELANE:-/media/hardware_design_tools/librelane}"
 PDK_ROOT="${PDK_ROOT:-/media/pdk/sky130_8afc834}"; export PDK="${PDK:-sky130A}"
 LAST_STEP="${LAST_STEP:-OpenROAD.STAPostPNR}"
 THREADS="${JOBQ_THREADS:-4}"
+HOLD_STEP="${HOLD_MARGIN_STEP:-0.1}"; HOLD_MAX="${HOLD_MARGIN_MAX:-0.5}"
 for U in $UTILS; do [[ "$U" =~ ^[0-9]+$ ]] || { echo "utilisations must be whole numbers: $UTILS"; exit 2; }; done
 source /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
 
@@ -100,71 +109,96 @@ PY
 
 if [[ "${OVERWRITE:-0}" != 1 ]]; then
   for U in $UTILS; do
-    [[ -e "$(dirname "$CFG")/runs/u$U" ]] && { echo "run $(dirname "$CFG")/runs/u$U exists; move it away or set OVERWRITE=1"; exit 2; }
+    for r in "$(dirname "$CFG")/runs/u$U" "$(dirname "$CFG")/runs/u${U}_hold"*; do
+      [[ -e "$r" ]] && { echo "run $r exists; move it away or set OVERWRITE=1"; exit 2; }
+    done
   done
 fi
 ATTEMPTS="$WORK/ladder_attempts.tsv"; : > "$ATTEMPTS"
-CRASHED=""
+CRASHED=""; HOLDSTOP=""
 rm -f "$WORK/runs/accepted"
 ACCEPTED=""
 for U in $UTILS; do
   DENS=$(( U + ${DENSITY_ADD:-10} )); (( DENS > 95 )) && DENS=95
-  TAG="u$U"; LOG="$WORK/logs/librelane_$TAG.log"; T0=$(date +%s)
-  echo "==== utilisation $U %, density $DENS %, run $TAG  ($(date '+%F %H:%M'))"
-  OVR=(--override-config "FP_CORE_UTIL=$U" --override-config "PL_TARGET_DENSITY_PCT=$DENS"
-       --override-config "DRT_THREADS=$THREADS")
-  for o in ${EXTRA_OVERRIDES:-}; do OVR+=(--override-config "$o"); done
-  ( cd "$WORK" && export _OPENLANE_MAX_CORES="$THREADS" THREADS PDK_ROOT TAG LIBRELANE LAST_STEP \
-      PRE_CTS_TCL="${PRE_CTS_TCL:-}" && exec setsid nice -n 19 bash -c '
-    set -euo pipefail
-    cfg=$1; shift
-    dev=(nix --extra-experimental-features "nix-command flakes" develop --accept-flake-config "$LIBRELANE" -c)
-    ll=(python3 -m librelane -j "$THREADS" --pdk-root "$PDK_ROOT" --pdk "$PDK" --manual-pdk --run-tag "$TAG")
-    [[ -n "$PRE_CTS_TCL" ]] || exec "${dev[@]}" "${ll[@]}" --overwrite --to "$LAST_STEP" "$@" "$cfg"
-    "${dev[@]}" "${ll[@]}" --overwrite --to OpenROAD.DetailedPlacement "$@" "$cfg"
-    odb=$(ls -t "$(dirname "$cfg")/runs/$TAG"/*-openroad-detailedplacement/*.odb | head -n 1)
-    echo "PRE_CTS_TCL: $PRE_CTS_TCL on $odb"
-    ODB="$odb" "${dev[@]}" openroad -exit -no_splash "$PRE_CTS_TCL"
-    exec "${dev[@]}" "${ll[@]}" --from OpenROAD.CTS --to "$LAST_STEP" "$@" "$cfg"' bash "$CFG" "${OVR[@]}" ) > "$LOG" 2>&1 &
-  ACTIVE=$!
-  STOPPED=$(watchdog "$(dirname "$CFG")/runs/$TAG")
-  wait "$ACTIVE" || true; ACTIVE=""
-  RUN="$(dirname "$CFG")/runs/$TAG"
-  if [[ -n "$STOPPED" ]]; then
-    VERDICT="stopped by the watchdog: $STOPPED"
-  else
-    VERDICT=$(check "$RUN")
-    CRASH=$(grep -m1 -aoE 'Signal (4|6|7|8|11) received|Segmentation fault|Illegal instruction|stack smashing detected|Bus error' "$LOG" || true)
-    if [[ "$VERDICT" != pass && -n "$CRASH" ]]; then
-      VERDICT="crashed ($CRASH): not a routability result, ladder stopped; rerun this utilisation"; CRASHED=$U
-    elif [[ "$VERDICT" != pass ]] && grep -qa 'critical disconnected pins found' "$LOG"; then
-      PINS=$(grep -ahoE "instance '[^']+' are not connected" "$RUN/error.log" "$LOG" 2> /dev/null | sort -u | tr '\n' ' ' || true)
-      VERDICT="disconnected pins after routing ($PINS): a tool bug, not a routability result (sky130 notes 9.2), ladder stopped"
-      CRASHED=$U
+  MARGIN=""                   # empty: the configuration's own hold margin
+  while :; do
+    TAG="u$U${MARGIN:+_hold$MARGIN}"; LOG="$WORK/logs/librelane_$TAG.log"; T0=$(date +%s)
+    echo "==== utilisation $U %, density $DENS %${MARGIN:+, hold margin $MARGIN ns}, run $TAG  ($(date '+%F %H:%M'))"
+    OVR=(--override-config "FP_CORE_UTIL=$U" --override-config "PL_TARGET_DENSITY_PCT=$DENS"
+         --override-config "DRT_THREADS=$THREADS")
+    for o in ${EXTRA_OVERRIDES:-}; do
+      [[ -n "$MARGIN" && "$o" == PL_RESIZER_HOLD_SLACK_MARGIN=* ]] || OVR+=(--override-config "$o")
+    done
+    [[ -z "$MARGIN" ]] || OVR+=(--override-config "PL_RESIZER_HOLD_SLACK_MARGIN=$MARGIN")
+    ( cd "$WORK" && export _OPENLANE_MAX_CORES="$THREADS" THREADS PDK_ROOT TAG LIBRELANE LAST_STEP \
+        PRE_CTS_TCL="${PRE_CTS_TCL:-}" && exec setsid nice -n 19 bash -c '
+      set -euo pipefail
+      cfg=$1; shift
+      dev=(nix --extra-experimental-features "nix-command flakes" develop --accept-flake-config "$LIBRELANE" -c)
+      ll=(python3 -m librelane -j "$THREADS" --pdk-root "$PDK_ROOT" --pdk "$PDK" --manual-pdk --run-tag "$TAG")
+      [[ -n "$PRE_CTS_TCL" ]] || exec "${dev[@]}" "${ll[@]}" --overwrite --to "$LAST_STEP" "$@" "$cfg"
+      "${dev[@]}" "${ll[@]}" --overwrite --to OpenROAD.DetailedPlacement "$@" "$cfg"
+      odb=$(ls -t "$(dirname "$cfg")/runs/$TAG"/*-openroad-detailedplacement/*.odb | head -n 1)
+      echo "PRE_CTS_TCL: $PRE_CTS_TCL on $odb"
+      ODB="$odb" "${dev[@]}" openroad -exit -no_splash "$PRE_CTS_TCL"
+      exec "${dev[@]}" "${ll[@]}" --from OpenROAD.CTS --to "$LAST_STEP" "$@" "$cfg"' bash "$CFG" "${OVR[@]}" ) > "$LOG" 2>&1 &
+    ACTIVE=$!
+    STOPPED=$(watchdog "$(dirname "$CFG")/runs/$TAG")
+    wait "$ACTIVE" || true; ACTIVE=""
+    RUN="$(dirname "$CFG")/runs/$TAG"
+    if [[ -n "$STOPPED" ]]; then
+      VERDICT="stopped by the watchdog: $STOPPED"
+    else
+      VERDICT=$(check "$RUN")
+      CRASH=$(grep -m1 -aoE 'Signal (4|6|7|8|11) received|Segmentation fault|Illegal instruction|stack smashing detected|Bus error' "$LOG" || true)
+      if [[ "$VERDICT" != pass && -n "$CRASH" ]]; then
+        VERDICT="crashed ($CRASH): not a routability result, ladder stopped; rerun this utilisation"; CRASHED=$U
+      elif [[ "$VERDICT" != pass ]] && grep -qa 'critical disconnected pins found' "$LOG"; then
+        PINS=$(grep -ahoE "instance '[^']+' are not connected" "$RUN/error.log" "$LOG" 2> /dev/null | sort -u | tr '\n' ' ' || true)
+        VERDICT="disconnected pins after routing ($PINS): a tool bug, not a routability result (sky130 notes 9.2), ladder stopped"
+        CRASHED=$U
+      fi
+      if [[ "$VERDICT" == pass && -n "${SIGNOFF_CMD:-}" ]]; then
+        SO=0; $SIGNOFF_CMD "$RUN" > "$WORK/logs/signoff_$TAG.log" 2>&1 || SO=$?
+        if (( SO == 3 )); then VERDICT="own sign-off: hold failed, nothing else (logs/signoff_$TAG.log)"
+        elif (( SO != 0 )); then VERDICT="own sign-off failed (logs/signoff_$TAG.log)"; fi
+      fi
     fi
-    if [[ "$VERDICT" == pass && -n "${SIGNOFF_CMD:-}" ]]; then
-      $SIGNOFF_CMD "$RUN" > "$WORK/logs/signoff_$TAG.log" 2>&1 || VERDICT="own sign-off failed (logs/signoff_$TAG.log)"
+    MIN=$(( ($(date +%s) - T0) / 60 ))
+    USED=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("PL_RESIZER_HOLD_SLACK_MARGIN", ""))' \
+             "$RUN/resolved.json" 2> /dev/null || true)
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$U" "$DENS" "$TAG" "$USED" "$MIN" "$VERDICT" >> "$ATTEMPTS"
+    echo "   $VERDICT  ($MIN min)"
+    if [[ "$VERDICT" == pass ]]; then
+      mkdir -p "$WORK/runs"; ln -sfn "$RUN" "$WORK/runs/accepted"; ACCEPTED=$U; break 2
     fi
-  fi
-  MIN=$(( ($(date +%s) - T0) / 60 ))
-  printf '%s\t%s\t%s\t%s\n' "$U" "$DENS" "$MIN" "$VERDICT" >> "$ATTEMPTS"
-  echo "   $VERDICT  ($MIN min)"
-  if [[ "$VERDICT" == pass ]]; then
-    mkdir -p "$WORK/runs"; ln -sfn "$RUN" "$WORK/runs/accepted"; ACCEPTED=$U; break
-  fi
-  [[ -n "$CRASHED" ]] && break
+    [[ -n "$CRASHED" ]] && break 2
+    # hold alone failed: the same utilisation again with a larger hold margin after CTS
+    if [[ ( "$VERDICT" == "hold slack -"* && "$VERDICT" != *";"* ) || "$VERDICT" == "own sign-off: hold failed"* ]] \
+       && [[ -n "$USED" ]]; then
+      MARGIN=$(awk -v m="$USED" -v s="$HOLD_STEP" -v x="$HOLD_MAX" 'BEGIN { if (m + s <= x + 1e-9) printf "%g", m + s }')
+      [[ -n "$MARGIN" ]] && continue
+      echo "   hold still fails with a $USED ns margin, the limit (HOLD_MARGIN_MAX $HOLD_MAX ns): ladder stopped"
+      HOLDSTOP=$U; break 2
+    fi
+    break
+  done
 done
 
 python3 - "$ATTEMPTS" "$WORK/ladder.json" "$CFG" "$PDK_ROOT" "$LIBRELANE" "${ACCEPTED:-}" <<'PY'
 import json, os, subprocess, sys
 attempts_file, out, cfg, pdk_root, librelane, accepted = sys.argv[1:]
-attempts = [dict(zip(("utilisation_pct", "density_pct", "minutes", "verdict"), line.rstrip("\n").split("\t")))
-            for line in open(attempts_file) if line.strip()]
+attempts = [dict(zip(("utilisation_pct", "density_pct", "tag", "hold_margin_ns", "minutes", "verdict"),
+                     line.rstrip("\n").split("\t"))) for line in open(attempts_file) if line.strip()]
 for a in attempts:
     for k in ("utilisation_pct", "density_pct", "minutes"):
         a[k] = int(a[k])
+    a["hold_margin_ns"] = float(a["hold_margin_ns"]) if a["hold_margin_ns"] else None
 sources = os.path.join(pdk_root, os.environ.get("PDK", "sky130A"), "SOURCES")
-summary = {"config": cfg, "accepted_utilisation_pct": int(accepted) if accepted else None, "attempts": attempts,
+acc = [a for a in attempts if a["verdict"] == "pass"]
+summary = {"config": cfg, "accepted_utilisation_pct": int(accepted) if accepted else None,
+           "accepted_hold_margin_ns": acc[0]["hold_margin_ns"] if acc else None,
+           "accepted_tag": acc[0]["tag"] if acc else None, "attempts": attempts,
            "librelane": os.path.realpath(librelane),
            "pdk": open(sources).read().strip() if os.path.exists(sources) else os.path.realpath(pdk_root)}
 json.dump(summary, open(out, "w"), indent=1)
@@ -172,4 +206,5 @@ PY
 rm -f "$ATTEMPTS"
 [[ -n "$ACCEPTED" ]] && { echo "accepted at $ACCEPTED %: $WORK/runs/accepted"; exit 0; }
 [[ -n "$CRASHED" ]] && { echo "stopped at $CRASHED % by a crash or a tool bug (see $WORK/logs/librelane_u$CRASHED.log); see $WORK/ladder.json"; exit 1; }
+[[ -n "$HOLDSTOP" ]] && { echo "stopped at $HOLDSTOP %: hold fails up to the margin limit; see $WORK/ladder.json"; exit 1; }
 echo "no utilisation passed; see $WORK/ladder.json"; exit 1

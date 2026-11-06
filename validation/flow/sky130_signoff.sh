@@ -3,7 +3,8 @@
 # parasitics, with the run's final netlist, SPEF and SDC (OpenSTA 2.7 reads the escaped SPEF names itself). Setup and
 # hold must be met at every corner, and no SPEF entry may go unmatched.
 # Usage: sky130_signoff.sh <run dir>          (DESIGN_DIR: the design; harden_ladder.sh calls it as SIGNOFF_CMD)
-# Writes <run dir>/signoff/signoff.json; exit status 0 when every corner passes.
+# Writes <run dir>/signoff/signoff.json. Exit status: 0 when every corner passes, 3 when hold alone fails
+# (harden_ladder.sh then hardens the same utilisation with a larger hold margin), 1 otherwise.
 set -euo pipefail
 [[ $# -eq 1 && -n "${DESIGN_DIR:-}" ]] || { sed -n '5p' "$0"; exit 2; }
 source "$(dirname "$0")/env.sh"
@@ -48,5 +49,7 @@ summary = {"corners": corners, "pass": not problems, "problems": problems,
 json.dump(summary, open(f"{out}/signoff.json", "w"), indent=1)
 print(f"sign-off at {len(corners)} corners: worst setup {summary['setup_ws_ns']} ns, worst hold {summary['hold_ws_ns']} ns"
       + ("" if not problems else "; " + "; ".join(problems[:5])))
-sys.exit(0 if summary["pass"] else 1)
+# hold alone failed: all 9 corners there, every SPEF entry matched, setup met
+hold_only = bool(problems) and len(corners) == 9 and all(re.fullmatch(r"\w+: hold -?[0-9.]+ ns", p) for p in problems)
+sys.exit(0 if summary["pass"] else 3 if hold_only else 1)
 PY

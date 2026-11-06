@@ -9,7 +9,7 @@ A generic, runnable measurement flow for the reference designs in `../designs/`,
 | `validate.sh <label> [design ...]` | submits one `jobq` job per design (`run_design.sh`), work in `../work_<label>/` |
 | `run_design.sh <design> <work>` | one design end to end; writes `<work>/result.json` |
 | `sky130_harden.sh <design> <work>` | LibreLane with the measurement settings of sky130 notes 5.1, `tools/harden_ladder.sh`, accepted only on the 9-corner own sign-off |
-| `sky130_signoff.sh <run>` | own sign-off at {tt, ss, ff} × {nom, min, max} with the run's netlist, SPEF and SDC (`tools/hold_sta.tcl`) |
+| `sky130_signoff.sh <run>` | own sign-off at {tt, ss, ff} × {nom, min, max} with the run's netlist, SPEF and SDC (`tools/hold_sta.tcl`); exit status 3 when hold alone fails, for the ladder's hold retry |
 | `sky130_measure.sh <design> <run> <out>` | Icarus gate-level simulation (SDF or zero delay), bit-exact check, toggles, OpenSTA per-pin power, SRAM22 state and root-clock corrections |
 | `asap7_run.sh <design> <work>` | ORFS (`ef2cb37`, LibreLane binaries, `CORNER=TC`) over the design's utilisations, own hold check at TT/SS/FF, SDF from OpenSTA, Icarus with 1 ps models, power with run B and the multi-PDK root-clock correction |
 | `rtl_sim.sh <design> <out> [--golden]` | RTL simulation with the design's testbench; `--golden` stores its output as the bit-exact reference |
