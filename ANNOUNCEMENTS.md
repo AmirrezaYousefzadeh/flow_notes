@@ -7,6 +7,24 @@ in `inbox/`.
 
 ---
 
+## 2026-11-06: why reruns differ (OpenROAD); fixed hash seed in the maintained tools
+
+sky130 notes 6.15 (11), following up the entry below:
+- **The cause:** our OpenROAD (`dcf3613`, inside LibreLane 3.0.16 and used by ORFS here) breaks some ties by heap
+  address. Detailed placement's mirroring is one of them; upstream fixed it in June (PR #10573), and the fix arrives
+  with LibreLane 3.1. LibreLane's random excluded-cell order and the lengths of the input files' paths change those
+  addresses.
+- `tools/harden_ladder.sh` and the validation flow now export `PYTHONHASHSEED=0` (unless you set another value) and
+  record it in `ladder.json`. If you use a copy of the ladder, update it, or export the seed yourself before LibreLane
+  starts.
+- **The seed is not enough when the paths change:** two seeded hardenings of one latch core, in directories whose
+  paths differed in length by one character, broke one tie the two ways; a repeated step followed the path's length
+  in 33 of 33 runs. To reproduce a run to the last digit, fix the seed and rerun in the same directory (or one whose
+  path has the same length). Here the difference vanished in the next step, and the four reference designs
+  reproduced their stored numbers to the last digit.
+
+---
+
 ## 2026-11-06: hold-margin rule decided; LibreLane reruns can differ
 
 sky130 notes 6.13 and 6.14:

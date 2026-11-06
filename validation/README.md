@@ -22,7 +22,8 @@ corrections; ORFS at TT for ASAP7.
 
 **Run:** `flow/validate.sh <label>` (one `jobq` job per design, work in `work_<label>/`, not in git), then
 `flow/compare.py work_<label> results/<stored set>`; store an accepted set with `--store` into `results/<set>/`.
-Budget: the SRAM22 design minutes, the ASAP7 core under an hour, the adder-tree and latch cores several hours each.
+Budget, with 4 threads per design: the SRAM22 design a few minutes, the ASAP7 core about 15 min, the latch core 40 to
+90 min, the adder-tree core about 2 h; longer when the machine is busy.
 The output load is the PDK's default (`OUTPUT_CAP_LOAD` 33.442 fF, recorded in each `harden.json`), with no port
 buffers (sky130 5.1).
 
@@ -53,13 +54,20 @@ Every later set is compared with this one.
 | `min32_asap7` | 60 % | 16 667 | (ORFS) | +0.044 ns (TT) | 0.477 µW | 16 min |
 
 Cells exclude tap cells. The powers include leakage and the root-clock correction. Run times are for one `jobq` job
-each, with 4 threads, once the job had started.
+each, with 4 threads, once the job had started. They depend on the machine's load and on the flow: a rerun on
+2026-11-06 took 1, 41, 110 and 15 min. The stored `lmem16` hardening (91 min, now 39) had run beside another long
+job, and the simulations, now without physical-only cells, take under a minute and 4 min instead of 26 and 28.
 
-LibreLane's runs are not always bit-identical: Python's hash randomisation changes the order of the excluded-cell
-list that OpenROAD gets, and OpenROAD breaks ties by it (sky130 notes 11). These numbers were hardened without a
-fixed `PYTHONHASHSEED`. A rerun of `lmem16`'s accepted configuration on 2026-11-06 still gave the stored layout to the
-last digit (its CTS result had differed, and the next step erased the difference); one rerun with the default
-0.1 ns margin did not reproduce an earlier one (worst hold −0.003 instead of −0.057 ns).
+LibreLane's runs are not always bit-identical (sky130 notes 11): OpenROAD `dcf3613` breaks some ties by heap address,
+and Python's hash randomisation and the lengths of the paths change the addresses. The flow fixes `PYTHONHASHSEED` (0)
+since 2026-11-06; the stored numbers were hardened before, without it. A seeded rerun on 2026-11-06 (`work_seed0`, a
+label as long as the stored set's `trial`) reproduced every number of the four designs to the last digit, and the
+design files of every hardening step of the three sky130 designs byte for byte (dates and paths aside). A second
+seeded hardening of `lmem16`, in `work_seed0b` (a path one character longer), broke one tie in CTS the other way (two
+clock buffers mirrored); the next step erased it, and it too ended on the stored layout. **To compare with a stored
+set to the last digit, use a label as long as the stored set's** (`trial`, 5 characters): with another length, a tie
+can move a number slightly, until LibreLane ships an OpenROAD with the upstream fixes. One unseeded rerun with the
+default 0.1 ns margin did not reproduce an earlier one (worst hold −0.003 instead of −0.057 ns).
 
 ## Previous procedure
 

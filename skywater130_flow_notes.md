@@ -1,6 +1,6 @@
 # SkyWater 130 nm flow notes: synthesis, hardening, gate-level simulation and power
 
-**Version 6.14, last updated 2026-11-06.** The full history is in "Version history" at the end.
+**Version 6.15, last updated 2026-11-06.** The full history is in "Version history" at the end.
 
 Read this before you synthesise, harden or measure anything on sky130 on this machine. It is written for engineers
 and AI agents. Everything here was learned the hard way, in several research designs measured on this machine:
@@ -835,7 +835,7 @@ and `hvl` (1.1).
 | clock duty d used for the root-clock correction | the measured one (clock cycles × period / window) |
 | `set_clock_sense -stop_propagation` in the power script | absent |
 | combinational group of the power report | a plausible share of the dynamic power, not near 0 %; no active logic cells at 0 W |
-| a reference design hardened and measured twice | the same number to the last digit; without a fixed `PYTHONHASHSEED`, small differences are possible (11) |
+| a reference design hardened and measured twice | the same number to the last digit with `PYTHONHASHSEED` fixed and paths of the same lengths; otherwise small differences are possible (11) |
 
 ## 11. Reproducibility of the numbers (and of trained networks)
 
@@ -844,18 +844,32 @@ and `hvl` (1.1).
 - **Measure with a script that a second person can rerun**, and keep its outputs together with the commit of the
   scripts that produced them. Results that depend on an untracked clone are not reproducible.
 - **Content-hash results for reuse** (section 8.6); never reuse across a change of netlist, SDF, SPEF or stimulus.
-- **Fix Python's string hashing when a hardening must be reproducible.** LibreLane 3.0.16 hands OpenROAD the
-  excluded-cell list (`_PNR_EXCLUDED_CELLS`) in the order of a Python set, which Python's hash randomisation changes
-  in every run (`steps/openroad.py`; upstream main has the same code), and OpenROAD breaks ties by that order. One CTS
-  step repeated on one and the same placed database gave two different layouts, 8 and 7 times in 15 runs: two of
-  3 495 clock buffers mirrored the other way, at equal wire length. With `PYTHONHASHSEED=0` exported before LibreLane
-  starts, OpenROAD's environment was identical in every run, and so was the layout (6 of 6). Checked on that step; a
-  whole hardening with the seed fixed has not been compared yet. Often the next step erases such a difference (a rerun
-  reproduced a stored layout to the last digit), but not always: three hardenings of one latch-core configuration
-  ended at −0.057, −0.057 and −0.003 ns worst hold at `max_ff`. Without a fixed seed, expect slacks within a few
-  hundredths of a ns of zero, and with them the hold margin the ladder accepts (5.3), to change between reruns.
-  Address randomisation was not a source here: LibreLane's Nix shell (`nix develop`) turns it off for every tool
-  it starts; a LibreLane started otherwise may vary for that reason too.
+- **Rerun in the same directory, with Python's string hashing fixed, when a hardening must be reproducible.** OpenROAD
+  `dcf3613` (in LibreLane 3.0.16, and in ORFS here) breaks some ties by heap address: detailed placement sorts nets
+  for mirroring by wire length alone, and nets of equal length keep the order of an unordered map of pointers
+  (`dpl/src/OptMirror.cpp`). Upstream fixed it on 2026-06-02 (PR #10573), with more fixes of this kind from April to
+  June (#10085, #10398, #10655, #10656), all after our version. LibreLane's Nix shell turns address randomisation off,
+  so the addresses are fixed for a given environment, but two things change them:
+  1. LibreLane hands OpenROAD the excluded-cell list (`_PNR_EXCLUDED_CELLS`) in the order of a Python set
+     (`steps/openroad.py`, also on upstream main), which Python's hash randomisation changes in every run. One CTS
+     step repeated on one and the same placed database gave two layouts, 8 and 7 times in 15 runs: two of 3 495 clock
+     buffers mirrored the other way, at equal wire length. With `PYTHONHASHSEED=0` exported before LibreLane starts,
+     OpenROAD's environment was the same in every run, and so was the layout. `harden_ladder.sh` and the validation
+     flow export it (default 0) since 2026-11-06.
+  2. The lengths of the input files' paths. Two seeded hardenings of a latch core, in work directories whose names
+     differed in length by one character, were byte-identical up to CTS and broke that tie the two ways. The step
+     followed the length of its input directory's path in 33 of 33 runs; the characters, the files and the name of
+     the output directory made no difference.
+
+  So a seeded rerun reproduces a hardening to the last digit when its paths have the same lengths (the same
+  directory is safest). A run in another directory, account or machine can differ wherever OpenROAD meets such a
+  tie, until LibreLane ships an OpenROAD with these fixes (3.1 with 26Q4; check at that upgrade). Often the next step
+  erases the difference: here it did, and all four reference designs reproduced their stored numbers to the last
+  digit (`validation/README.md`). But not always: three unseeded hardenings of one latch-core configuration ended at
+  −0.057, −0.057 and −0.003 ns worst hold at `max_ff`. Expect slacks within a few hundredths of a ns of zero, and with
+  them the hold margin the ladder accepts (5.3), to change between such runs. ORFS uses the same OpenROAD here: the
+  path lengths should matter there too (not tested), the hash seed does not. A tool started outside the Nix shell,
+  with address randomisation on, may differ in every run.
 - **For hardware that runs a trained network:**
   - Make training deterministic: fixed seeds, deterministic library settings.
   - Compute statistics in float64; numpy float32 reductions depend on the memory alignment of the array.
@@ -922,3 +936,4 @@ When tapeout work verifies any of this, report it through the inbox; it will get
 | 6.12 | 2026-11-06 | from the inbox: post-GRT hold margin 0.3 ns and 0.5 ns after CTS on a decoder, default margins failed at ff in 7 of 13 layouts (5.1); `RUN_POST_GRT_DESIGN_REPAIR` cuts the slews by two thirds (1.1); own sign-off: take the SDC variables from LibreLane's written SDC or the step's env, not `resolved.json`'s integers (6.2, one silent-error row), one measured derating effect (6.1) |
 | 6.13 | 2026-11-06 | the hold-margin rule decided: the defaults, raised in 0.1 ns steps at the same utilisation when hold fails, the margin stated (5.1); `harden_ladder.sh` does it, on LibreLane's slacks or an own sign-off that exits with status 3 (5.3) |
 | 6.14 | 2026-11-06 | LibreLane runs are not bit-reproducible: OpenROAD gets the excluded-cell list in a random order; `PYTHONHASHSEED=0` fixed one CTS step (11; 5.1 and checklist 10) |
+| 6.15 | 2026-11-06 | the cause found: OpenROAD `dcf3613` breaks a mirroring tie by heap address (fixed upstream, PR #10573); the excluded-cell order and the lengths of the input paths change the addresses. `harden_ladder.sh` and the validation flow fix `PYTHONHASHSEED`; rerun in the same directory; the reference set reproduced to the last digit (11; checklist 10) |
