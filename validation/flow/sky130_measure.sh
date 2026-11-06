@@ -24,6 +24,9 @@ if [[ -n "${MACRO_INSTANCES:-}" ]]; then
 fi
 python3 "$TOOLS/gen_phys_stubs.py" design.nl.v phys_stubs.v "$MODELS/primitives.v" "$MODELS/$LIB.v" \
   ${MACRO_V[@]+"${MACRO_V[@]}"} > /dev/null
+# the simulation leaves the fill, tap, endcap and diode cells out (faster SDF annotation, sky130 notes 7.4); OpenSTA
+# reads the full netlist
+python3 "$TOOLS/strip_phys_cells.py" design.nl.v design.sim.v > strip_phys_cells.log
 cc -O2 -o vcd_toggles "$TOOLS/vcd_toggles.c"
 INC=(); for i in "${INCDIRS[@]}"; do INC+=(-I "$i"); done
 if [[ "${SIM_MODE:-sdf}" == zero ]]; then          # zero delay: functional models, no glitches (sky130 notes 7.4)
@@ -37,7 +40,7 @@ fi
 echo "==> gate-level simulation (${SIM_MODE:-sdf}, $UNITS ${UNIT_NAME}s)"
 iverilog -g2012 "${MODE_ARGS[@]}" -o gls.vvp -DUNIT_DELAY='#1' -DCLK_PERIOD_NS="$CLOCK_NS" ${INC[@]+"${INC[@]}"} \
   -DDUMP_PATH="\"$OUT/wave.vcd\"" -DDUMP_LEVEL=0 -DDUMP_MODULE="$TB_TOP.$DUT" "${TB_DEFS[@]}" \
-  "${MODE_SRCS[@]}" "$MODELS/$LIB.v" phys_stubs.v design.nl.v "$TB" 2> iverilog.log ||
+  "${MODE_SRCS[@]}" "$MODELS/$LIB.v" phys_stubs.v design.sim.v "$TB" 2> iverilog.log ||
   { tail -n 20 iverilog.log; exit 1; }
 rm -f wave.vcd; mkfifo wave.vcd
 ./vcd_toggles -o toggles.tsv wave.vcd 2> toggles.log &

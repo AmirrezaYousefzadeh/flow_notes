@@ -75,7 +75,7 @@ status=0
 [[ $status -eq 0 ]] || { echo "$NAME: no utilisation accepted (see $WORK/ladder.json)"; exit 1; }
 
 python3 - "$WORK" "$(versions_json)" <<'PY'
-import glob, json, os, sys
+import glob, json, os, re, sys
 work, versions = sys.argv[1], json.loads(sys.argv[2])
 run = f"{work}/runs/accepted"
 m = json.load(open(f"{run}/final/metrics.json"))
@@ -86,7 +86,8 @@ summary = {
     "accepted_utilisation_pct": ladder["accepted_utilisation_pct"], "attempts": ladder["attempts"],
     "cells": m.get("design__instance__count__stdcell", 0) - taps, "tap_cells": taps,
     "cell_area_um2": m.get("design__instance__area__stdcell"), "core_area_um2": m.get("design__core__area"),
-    "hold_buffers": m.get("design__instance__count__hold_buffer"),
+    # counted in the netlist: LibreLane's hold-buffer metric keeps only the last repair step's (sky130 notes 5.1)
+    "hold_buffers": len(re.findall(r"^\s*\S+\s+hold\d+\s*\(", open(glob.glob(f"{run}/final/nl/*.nl.v")[0]).read(), re.M)),
     "repair_buffers": m.get("design__instance__count__class:timing_repair_buffer"),
     "setup_ws_ns": so["setup_ws_ns"], "hold_ws_ns": so["hold_ws_ns"], "signoff_corners": len(so["corners"]),
     "drc_errors": m.get("route__drc_errors"), "power_grid_violations": m.get("design__power_grid_violation__count"),

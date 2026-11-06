@@ -1,6 +1,6 @@
 # SkyWater 130 nm flow notes: synthesis, hardening, gate-level simulation and power
 
-**Version 6.10, last updated 2026-11-06.** The full history is in "Version history" at the end.
+**Version 6.11, last updated 2026-11-06.** The full history is in "Version history" at the end.
 
 Read this before you synthesise, harden or measure anything on sky130 on this machine. It is written for engineers
 and AI agents. Everything here was learned the hard way, in several research designs measured on this machine:
@@ -558,8 +558,10 @@ Check clock latency and skew after routing, not only slack.
 - **Leave the physical-only cells out of the simulated netlist** (`tools/strip_phys_cells.py`): fill, tap, endcap,
   decap and diode cells have no logic and no SDF delays, but they are most of the instances of a low-utilisation
   layout (306 000 of 345 000 in one latch core at 30 %). With 820 000 of them the annotation of a 129 000-cell core
-  ran for over an hour; without them it took 25 min, with 0 annotation errors and bit-exact outputs. Give OpenSTA the
-  full netlist, so that their leakage stays in the power.
+  ran for over an hour; without them it took 25 min, with 0 annotation errors and bit-exact outputs. On three
+  reference designs every power stayed the same to the last digit, and the latch core's simulation took 3 instead of
+  26 min; the waveform also lost four supply-pin variables per removed cell. Give OpenSTA the full netlist, so that
+  their leakage stays in the power.
 - **Workaround for very large netlists:** zero-delay simulation of the whole set, multiplied by a glitch factor
   (annotated over zero-delay energy) measured on an annotated subset or a smaller variant; the sampling error was
   0.4 %. sky130 glitch factors seen: 1.18–1.22 at 5 MHz and 1.13–1.20 at 50 MHz for decoder cores, 1.13–1.93 for
@@ -891,3 +893,4 @@ When tapeout work verifies any of this, report it through the inbox; it will get
 | 6.8 | 2026-11-03 | from the reference validation: OpenROAD `dcf3613`'s CTS leaves a clock gate without its clock (#9816), the workaround `firm_clock_gates.tcl` (gates placed at the centre of their sinks, then fixed) and the check `check_clock_gates.py`; `harden_ladder.sh` stops on disconnected pins and takes `PRE_CTS_TCL` (5.3, 9.2, 10); a latch core failed hold at ff with the default margins (5.1) |
 | 6.9 | 2026-11-03 | the post-GRT repair and a 0.2 ns margin tested on the latch core: the repair found nothing to fix and hold still failed at ff; the margin passed all 9 corners (5.1) |
 | 6.10 | 2026-11-06 | from the inbox: remedy B does not remove the slew increase on the decoders (fanout trees of unsized `buf_1`) and alone saves 2–4 % on the adder-tree core (1.1); the hold-buffer metric counts only the last repair step; four more layouts met hold with the defaults; `GRT-0273` on a core with 155 clock gates (5.1); leave the physical-only cells out of the simulation, `tools/strip_phys_cells.py`, one more glitch factor (7.4); a wire-load model is no substitute for SPEF (8.4) |
+| 6.11 | 2026-11-06 | 7.4: leaving the physical-only cells out of the simulation checked on the reference designs (same powers, 26 → 3 min) |
