@@ -36,6 +36,8 @@
 #             WD_IDLE_H [12] hours without a finished iteration, WD_MAX_H [36] hours for any attempt
 #   JOBQ_THREADS (set by jobq): routing threads (DRT_THREADS) and LibreLane's worker limit (-j; also caps the parallel
 #   STA and RCX corners, whose STA_THREADS default would otherwise be every core)
+#   PYTHONHASHSEED [0]: fixed, because LibreLane hands OpenROAD its excluded-cell list in the order of a Python set and
+#   OpenROAD breaks ties by that order; with Python's hash randomisation, reruns differ (sky130 notes 11)
 set -euo pipefail
 [[ $# -eq 3 ]] || { sed -n '6,7p' "$0"; exit 2; }
 CFG="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
@@ -44,6 +46,7 @@ LIBRELANE="${LIBRELANE:-/media/hardware_design_tools/librelane}"
 PDK_ROOT="${PDK_ROOT:-/media/pdk/sky130_8afc834}"; export PDK="${PDK:-sky130A}"
 LAST_STEP="${LAST_STEP:-OpenROAD.STAPostPNR}"
 THREADS="${JOBQ_THREADS:-4}"
+export PYTHONHASHSEED="${PYTHONHASHSEED:-0}"
 HOLD_STEP="${HOLD_MARGIN_STEP:-0.1}"; HOLD_MAX="${HOLD_MARGIN_MAX:-0.5}"
 for U in $UTILS; do [[ "$U" =~ ^[0-9]+$ ]] || { echo "utilisations must be whole numbers: $UTILS"; exit 2; }; done
 source /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
@@ -200,7 +203,8 @@ summary = {"config": cfg, "accepted_utilisation_pct": int(accepted) if accepted 
            "accepted_hold_margin_ns": acc[0]["hold_margin_ns"] if acc else None,
            "accepted_tag": acc[0]["tag"] if acc else None, "attempts": attempts,
            "librelane": os.path.realpath(librelane),
-           "pdk": open(sources).read().strip() if os.path.exists(sources) else os.path.realpath(pdk_root)}
+           "pdk": open(sources).read().strip() if os.path.exists(sources) else os.path.realpath(pdk_root),
+           "pythonhashseed": os.environ.get("PYTHONHASHSEED")}
 json.dump(summary, open(out, "w"), indent=1)
 PY
 rm -f "$ATTEMPTS"

@@ -11,6 +11,9 @@ SRAM22="${SRAM22:-/media/pdk/sram22_sky130_fixed-de0a9a7}"
 THREADS="${JOBQ_THREADS:-4}"
 export PATH="$OSSCAD/bin:$PATH"
 export PYTHONPYCACHEPREFIX="${TMPDIR:-/tmp}/flow_notes_pycache"
+# a fixed hash seed: LibreLane hands OpenROAD its excluded-cell list in the order of a Python set, and OpenROAD
+# breaks ties by that order (sky130 notes 11)
+export PYTHONHASHSEED="${PYTHONHASHSEED:-0}"
 source /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
 
 in_librelane() {   # run a command inside LibreLane's Nix environment (OpenROAD, OpenSTA, Yosys of the flow)
