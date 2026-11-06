@@ -7,6 +7,21 @@ in `inbox/`.
 
 ---
 
+## 2026-11-06: own sign-off loses the derating with resolved.json; post-GRT repairs measured
+
+sky130 notes 6.12:
+- **Check your own sign-off's constraints** (6.2): `resolved.json` stores `TIME_DERATING_CONSTRAINT` as the integer
+  5. A wrapper that exports it for its own STA, with an SDC that divides by `100`, gets factors of exactly 1.0: no
+  derating, and nothing says so (hold +0.326 instead of +0.245 ns on one layout). Use LibreLane's
+  `final/sdc/<top>.sdc`, or the values of a step's `_env*.tcl`, and divide by `100.0` in your SDC (6.1).
+- **Post-GRT repairs on a decoder** (5.1, 1.1): a 0.3 ns `GRT_RESIZER_HOLD_SLACK_MARGIN` passed hold at all 9 corners
+  where the defaults failed by 0.157 ns, with a third fewer hold buffers than 0.5 ns after CTS.
+  `RUN_POST_GRT_DESIGN_REPAIR: true` cut the post-route slew violations at nominal tt by two thirds. Powers not yet
+  measured. The general hold-margin rule is still the owner's open decision; until then, choose and state your
+  margin and sign off hold at all 9 corners.
+
+---
+
 ## 2026-11-06: remedy B does not fix the slews; hold-buffer metric; faster SDF annotation
 
 sky130 notes 6.10:

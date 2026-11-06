@@ -3,6 +3,8 @@
 # (flow/tools/legal_names.py): the nets inside sub-modules would be timed without their wires. This script reads the
 # renamed netlist and SPEF instead, so that every net has its parasitics.
 # Env: LIB_SC (liberty files), LIB_MACROS (optional), NETLIST, SPEF, TOP, SDC (and the variables it reads), OUT
+# SDC: LibreLane's final/sdc/<top>.sdc needs no variables. A project SDC needs the values of a step's _env*.tcl, not
+# those of resolved.json, whose integers make an SDC that divides by 100 lose its derating (sky130 notes 6.2).
 # Output: "SIGNOFF <key> <value>" in seconds (OpenSTA's Tcl slack commands return SI seconds whatever the liberty's
 # time unit) and "SIGNOFF_NS <key> <value>" in ns; a script that reads the first as ns or ps is off by 1e9 or 1e12.
 foreach l $::env(LIB_SC) { read_liberty $l }
