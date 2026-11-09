@@ -1,6 +1,6 @@
 # SkyWater 130 nm flow notes: synthesis, hardening, gate-level simulation and power
 
-**Version 6.15, last updated 2026-11-06.** The full history is in "Version history" at the end.
+**Version 6.16, last updated 2026-11-09.** The full history is in "Version history" at the end.
 
 Read this before you synthesise, harden or measure anything on sky130 on this machine. It is written for engineers
 and AI agents. Everything here was learned the hard way, in several research designs measured on this machine:
@@ -365,7 +365,9 @@ hand ran 2.8 days before anyone noticed.
   the steps, and report the accepted utilisation with every energy number, since utilisation changes wire length and
   power.
 - **A hold failure is not a routing failure either.** Repeat the same utilisation with a larger hold margin (5.1)
-  instead of stepping down.
+  instead of stepping down. The margin acts only once it exceeds the repair's own estimate of the worst hold slack
+  (its corners, its parasitics): below that the repair logs `RSZ-0033 No hold violations found` and the attempt
+  repeats the previous layout (5.7).
 - **A crash is not a routing failure.** A ladder that treats any failed attempt as "did not route" steps down after a
   crash: one 40/30/20 % ladder ended "nothing converged" after 16 minutes of segmentation faults, and the core later
   routed at 40 %. Stop (or rerun the same utilisation) on a crash; step down only on a routing result.
@@ -436,6 +438,16 @@ it is characterised at −40 °C.
   with `PNR_CORNERS`, `RSZ_CORNERS` and `CTS_CORNERS`: the resizer and CTS use `STA_CORNERS` unless their own
   variable is set, so `PNR_CORNERS` alone does not keep them off the low-voltage corner. Re-hardening with 1.28 V
   sign-off cost 7–41 % more energy and up to 2.5× more leakage, because of hold repair against `ff_n40C_1v95`.
+- **Sign off hold at the low-voltage corner too: the 9 standard corners do not cover it.** A 57 000-cell adder-tree
+  core with 155 clock gates met hold at all 9 (+0.100 ns worst, `max_ff_n40C_1v95`) and failed at `ss_n40C_1v28`:
+  −0.401 ns with maximum parasitics (−0.144 nominal, +0.217 minimum). It was one flip-flop-to-flip-flop path inside one
+  gated clock, whose clock latencies there were 19.5 and 25.4 ns (5.8 ns of skew). The cells slow down several times at
+  that corner and the wires do not, so branches balanced at the standard corners drift apart. The repairs do not see
+  that corner (above), but a larger hold margin after CTS fixed it (the ladder's hold retry with an own sign-off at
+  that corner, 5.3). At 0.2 ns the repair found nothing (`RSZ-0033 No hold violations found`; its own worst hold
+  slack was +0.205 ns) and the layout came out bit-identical. At 0.3 ns it inserted 205 hold buffers and hold passed:
+  +0.341 ns at 1.28 V, +0.164 ns at `max_ff`. That repair ran 4.5 h on one thread; the same step took 4 min when it
+  found nothing, and inserted 700 hold buffers in 2.4 min on a 39 000-cell latch core.
 - Slacks from a liberty swap ignore the IO delays unless you re-create the constraints from the run's SDC variables (LibreLane's written SDC, or the step's `_env*.tcl` values, not `resolved.json`'s integers, 6.2).
 - Leakage at −40 °C is not comparable with 25 °C numbers (static energy fell about 32× in one design), and some cells
   (`xnor2_4`, `xnor2_2`, `nand2_2`) barely reduce their leakage: a netlist with many drive-2 cells (1.1) pays for it
@@ -937,3 +949,4 @@ When tapeout work verifies any of this, report it through the inbox; it will get
 | 6.13 | 2026-11-06 | the hold-margin rule decided: the defaults, raised in 0.1 ns steps at the same utilisation when hold fails, the margin stated (5.1); `harden_ladder.sh` does it, on LibreLane's slacks or an own sign-off that exits with status 3 (5.3) |
 | 6.14 | 2026-11-06 | LibreLane runs are not bit-reproducible: OpenROAD gets the excluded-cell list in a random order; `PYTHONHASHSEED=0` fixed one CTS step (11; 5.1 and checklist 10) |
 | 6.15 | 2026-11-06 | the cause found: OpenROAD `dcf3613` breaks a mirroring tie by heap address (fixed upstream, PR #10573); the excluded-cell order and the lengths of the input paths change the addresses. `harden_ladder.sh` and the validation flow fix `PYTHONHASHSEED`; rerun in the same directory; the reference set reproduced to the last digit (11; checklist 10) |
+| 6.16 | 2026-11-09 | from the inbox: hold can fail at the low-voltage corner alone (−0.40 ns at `ss_n40C_1v28` on a core that met all 9 standard corners); a 0.3 ns margin after CTS fixed it, 0.2 ns did nothing (`RSZ-0033`, bit-identical layout); that hold repair ran 4.5 h (5.7, 5.3) |

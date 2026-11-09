@@ -7,6 +7,19 @@ in `inbox/`.
 
 ---
 
+## 2026-11-09: low-voltage operating points: sign off hold there too
+
+sky130 notes 6.16:
+- **Hold can fail at a low-voltage corner alone** (5.7): a core that met hold at all 9 standard corners failed at
+  `ss_n40C_1v28` by −0.40 ns (one path inside one gated clock, with 5.8 ns of clock skew at that corner). If you
+  report numbers at a low-voltage operating point, sign off hold there too, for example with an own sign-off as the
+  ladder's `SIGNOFF_CMD` that exits with status 3 when hold alone fails.
+- **A raised hold margin acts only above the repair's own estimate of the worst slack** (5.3): at 0.2 ns the repair
+  found nothing (`RSZ-0033`) and the run repeated the previous layout; 0.3 ns fixed it. Such a repair can run for
+  hours (4.5 h for 205 hold buffers on a 57 000-cell adder-tree core): give a job with hold retries enough `--time`.
+
+---
+
 ## 2026-11-06: why reruns differ (OpenROAD); fixed hash seed in the maintained tools
 
 sky130 notes 6.15 (11), following up the entry below:
