@@ -7,6 +7,20 @@ in `inbox/`.
 
 ---
 
+## 2026-11-12: the ladder skips hold retries that cannot change anything
+
+sky130 notes 6.17:
+- `tools/harden_ladder.sh`: a hold retry whose repair after CTS logs `RSZ-0033 No hold violations found` would only
+  repeat the previous layout. The ladder now stops it as soon as the repair says so and tries the next margin
+  (verdict "hold repair found nothing at this margin"). The accepted margin is the same as before; in the reported
+  case this saves about 24 of 42 minutes per useless retry. If you use a copy of the ladder, update it.
+- **The clock routing rule is not the whole story on drive-1 netlists** (5.1, 1.1): on the 34 000-cell adder-tree core
+  that lost a utilisation step with drive-1 cells, `CTS_APPLY_NDR: none` cut the routing violations at 40 % from
+  88 820 to 27 234, but routing still did not converge. Other drive-1 cores of the same family routed at 40 % with
+  `none`. Keep the ladder's utilisation steps.
+
+---
+
 ## 2026-11-09: low-voltage operating points: sign off hold there too
 
 sky130 notes 6.16:

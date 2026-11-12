@@ -20,7 +20,9 @@
 # An attempt that fails on hold alone (in LibreLane's metrics, or in the own sign-off with exit status 3) is repeated
 # at the same utilisation with PL_RESIZER_HOLD_SLACK_MARGIN raised by HOLD_MARGIN_STEP (tag u<U>_hold<margin>), up to
 # HOLD_MARGIN_MAX; a sparser utilisation does not fix hold (sky130 notes 5.1). Hold still failing at the limit stops
-# the ladder. Any other failure tries the next utilisation.
+# the ladder. A retry whose hold repair after CTS finds nothing at the raised margin (`RSZ-0033 No hold violations
+# found`) would repeat the previous layout: the ladder stops it as soon as the repair logs that and goes on to the
+# next margin (sky130 notes 5.3). Any other failure tries the next utilisation.
 # Existing runs with the ladder's tags (runs/u<U>, runs/u<U>_hold* beside the configuration) are never overwritten
 # unless OVERWRITE=1.
 # Environment (defaults in brackets):
@@ -33,11 +35,13 @@
 #   then runs in two LibreLane calls on the same run directory (--to OpenROAD.DetailedPlacement, --from OpenROAD.CTS).
 #   tools/firm_clock_gates.tcl is the workaround for the lost clock-gate inputs above.
 #   watchdog: WD_VIOL3 [500000] after 3 routing iterations, WD_VIOL6 [20000] after 6, WD_VIOL10 [3000] after 10,
-#             WD_IDLE_H [12] hours without a finished iteration, WD_MAX_H [36] hours for any attempt
+#             WD_IDLE_H [12] hours without a finished iteration, WD_MAX_H [36] hours for any attempt;
+#             WD_POLL_S [60]: seconds between its checks
 #   JOBQ_THREADS (set by jobq): routing threads (DRT_THREADS) and LibreLane's worker limit (-j; also caps the parallel
 #   STA and RCX corners, whose STA_THREADS default would otherwise be every core)
-#   PYTHONHASHSEED [0]: fixed, because LibreLane hands OpenROAD its excluded-cell list in the order of a Python set and
-#   OpenROAD breaks ties by that order; with Python's hash randomisation, reruns differ (sky130 notes 11)
+#   PYTHONHASHSEED [0]: fixed, because LibreLane hands OpenROAD its excluded-cell list in the order of a Python set,
+#   which moves OpenROAD's heap addresses, and OpenROAD dcf3613 breaks some ties by address; with Python's hash
+#   randomisation, reruns differ (sky130 notes 11)
 set -euo pipefail
 [[ $# -eq 3 ]] || { sed -n '6,7p' "$0"; exit 2; }
 CFG="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
@@ -59,14 +63,18 @@ stop_group() {     # <pgid>: TERM to the whole process group, KILL after a minut
 }
 trap '[[ -n "$ACTIVE" ]] && stop_group "$ACTIVE"' INT TERM EXIT
 
-watchdog() {       # <run dir>: stop the active attempt when detailed routing cannot converge; prints the reason
-  local run="$1" seen=0 last_change start now log reason prev gap
+watchdog() {       # <run dir> [hold retry]: stop the active attempt when detailed routing cannot converge, or, in a
+                   # hold retry, when the hold repair after CTS found nothing; prints the reason
+  local run="$1" retry="${2:-}" seen=0 last_change start now log reason prev gap poll="${WD_POLL_S:-60}"
   last_change=$(date +%s); start=$last_change; prev=$last_change
   while kill -0 "$ACTIVE" 2> /dev/null; do
-    sleep 60
+    sleep "$poll"
     now=$(date +%s); reason=""
+    if [[ -n "$retry" ]] && grep -qs 'RSZ-0033' "$run"/*-openroad-resizertimingpostcts/*.log; then
+      stop_group "$ACTIVE"; echo "hold repair found nothing"; return
+    fi
     # time spent frozen by jobq's memory guard (the watchdog is frozen too) is neither idle nor run time
-    gap=$(( now - prev - 60 )); prev=$now
+    gap=$(( now - prev - poll )); prev=$now
     (( gap > 180 )) && { last_change=$(( last_change + gap )); start=$(( start + gap )); }
     log=$(ls -t "$run"/*openroad-detailedrouting*/*.log 2> /dev/null | head -n 1 || true)
     if [[ -n "$log" ]]; then
@@ -146,10 +154,12 @@ for U in $UTILS; do
       ODB="$odb" "${dev[@]}" openroad -exit -no_splash "$PRE_CTS_TCL"
       exec "${dev[@]}" "${ll[@]}" --from OpenROAD.CTS --to "$LAST_STEP" "$@" "$cfg"' bash "$CFG" "${OVR[@]}" ) > "$LOG" 2>&1 &
     ACTIVE=$!
-    STOPPED=$(watchdog "$(dirname "$CFG")/runs/$TAG")
+    STOPPED=$(watchdog "$(dirname "$CFG")/runs/$TAG" "$MARGIN")
     wait "$ACTIVE" || true; ACTIVE=""
     RUN="$(dirname "$CFG")/runs/$TAG"
-    if [[ -n "$STOPPED" ]]; then
+    if [[ "$STOPPED" == "hold repair found nothing" ]]; then
+      VERDICT="hold repair found nothing at this margin (RSZ-0033): the previous layout again; stopped after the repair"
+    elif [[ -n "$STOPPED" ]]; then
       VERDICT="stopped by the watchdog: $STOPPED"
     else
       VERDICT=$(check "$RUN")
@@ -177,8 +187,8 @@ for U in $UTILS; do
     fi
     [[ -n "$CRASHED" ]] && break 2
     # hold alone failed: the same utilisation again with a larger hold margin after CTS
-    if [[ ( "$VERDICT" == "hold slack -"* && "$VERDICT" != *";"* ) || "$VERDICT" == "own sign-off: hold failed"* ]] \
-       && [[ -n "$USED" ]]; then
+    if [[ ( "$VERDICT" == "hold slack -"* && "$VERDICT" != *";"* ) || "$VERDICT" == "own sign-off: hold failed"* \
+          || "$VERDICT" == "hold repair found nothing"* ]] && [[ -n "$USED" ]]; then
       MARGIN=$(awk -v m="$USED" -v s="$HOLD_STEP" -v x="$HOLD_MAX" 'BEGIN { if (m + s <= x + 1e-9) printf "%g", m + s }')
       [[ -n "$MARGIN" ]] && continue
       echo "   hold still fails with a $USED ns margin, the limit (HOLD_MARGIN_MAX $HOLD_MAX ns): ladder stopped"
