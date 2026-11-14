@@ -1,6 +1,6 @@
 # SkyWater 130 nm flow notes: synthesis, hardening, gate-level simulation and power
 
-**Version 6.17, last updated 2026-11-12.** The full history is in "Version history" at the end.
+**Version 6.18, last updated 2026-11-14.** The full history is in "Version history" at the end.
 
 Read this before you synthesise, harden or measure anything on sky130 on this machine. It is written for engineers
 and AI agents. Everything here was learned the hard way, in several research designs measured on this machine:
@@ -136,7 +136,7 @@ These are the installed default versions (since 2026-10-24, validated on the ref
 | LibreLane (successor of OpenLane 2) | 3.0.16, `/media/hardware_design_tools/librelane` (→ `librelane-3.0.16`), Nix flake: OpenROAD `dcf3613`, OpenSTA 2.7.0 (`857316f`), Yosys 0.62, KLayout 0.30.7, Magic 8.3.623 | `nix --extra-experimental-features "nix-command flakes" develop --accept-flake-config /media/hardware_design_tools/librelane -c python3 -m librelane --pdk-root /media/pdk/sky130_8afc834 --pdk sky130A --manual-pdk --run-tag TAG --overwrite [--to OpenROAD.STAPostPNR] config.yaml` |
 | PDK for LibreLane | open_pdks `8afc8346a57fe1ab7934ba5a6056ea8b43078e71` (the version LibreLane 3.0.16 is validated with), `PDK_ROOT=/media/pdk/sky130_8afc834` (sky130A, sky130B) | |
 | OpenSTA | inside the LibreLane Nix shell | `nix ... develop ... /media/hardware_design_tools/librelane -c sta -no_splash -exit script.tcl` |
-| Icarus Verilog, Yosys, Verilator | OSS CAD Suite 2026-10-24, `/media/hardware_design_tools/oss-cad-suite` (→ `oss-cad-suite-2026-10-24`): Icarus 14.0 devel s20260301-664, Yosys 0.70+219, Verilator 5.053 devel | add its `bin/` to `PATH` |
+| Icarus Verilog, Yosys, Verilator | OSS CAD Suite 2026-10-24, `/media/hardware_design_tools/oss-cad-suite` (→ `oss-cad-suite-2026-10-24`): Icarus 14.0 devel s20260301-664, Yosys 0.70+219, Verilator 5.053 devel | add its `bin/` to `PATH`; before using its Yosys on its own, read section 4 (it can hang) |
 | Nix | `/nix/var/nix/profiles/default` | `source /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh` |
 | fixed SRAM22 views | `/media/pdk/sram22_sky130_fixed-de0a9a7/` (section 9.1) | |
 | other PDKs | `/media/pdk`: gf180mcuA–D, ihp-sg13g2, asap7, nangate45 | |
@@ -318,6 +318,16 @@ sessions in one queue job, declare the memory of all their Icarus compilations t
   that an edit does not invalidate earlier measurements.
 - Yosys/ABC area from a synthesis-only probe is cell area only, untimed and without utilisation; do not compare it
   with the areas of a hardened run.
+- **OSS CAD Suite's Yosys (0.70+219) hangs in `abc` without a terminal when `TMPDIR` has 36 or more characters.**
+  No error: Yosys waits forever at 0 % CPU while ABC sits idle at its prompt (Yosys issue #6448; fixed upstream on
+  2026-11-04 by PR #6451, after our build). Yosys spots the end of ABC's script by readline's echo of
+  `source <TMPDIR>/.../abc.script`. Without a terminal (`TERM` unset or `dumb`, as in agent shells and `jobq` jobs),
+  readline assumes 80 columns and scrolls a longer line sideways instead of printing it, so the end never comes.
+  Measured here: up to 35 characters passed; 36 to 159 hung, with one thread or the default, with or without
+  `-dont_use`. Agent sessions may set `TMPDIR` to a long scratch path. Run this Yosys with `COLUMNS=1000` (or
+  `TERM=xterm`), or a `TMPDIR` such as `/tmp`, under a timeout that kills the process group. LibreLane's Yosys 0.62
+  did not hang with a 91-character `TMPDIR`. This Yosys runs several ABC processes at once by default: on the shared
+  machine set `YOSYS_MAX_THREADS` to the threads the job asked for.
 
 ## 5. Hardening with LibreLane
 
@@ -953,3 +963,4 @@ When tapeout work verifies any of this, report it through the inbox; it will get
 | 6.15 | 2026-11-06 | the cause found: OpenROAD `dcf3613` breaks a mirroring tie by heap address (fixed upstream, PR #10573); the excluded-cell order and the lengths of the input paths change the addresses. `harden_ladder.sh` and the validation flow fix `PYTHONHASHSEED`; rerun in the same directory; the reference set reproduced to the last digit (11; checklist 10) |
 | 6.16 | 2026-11-09 | from the inbox: hold can fail at the low-voltage corner alone (−0.40 ns at `ss_n40C_1v28` on a core that met all 9 standard corners); a 0.3 ns margin after CTS fixed it, 0.2 ns did nothing (`RSZ-0033`, bit-identical layout); that hold repair ran 4.5 h (5.7, 5.3) |
 | 6.17 | 2026-11-12 | from the inbox, tested: without the clock routing rule the drive-1 adder-tree netlist still did not route at 40 % (27 234 instead of 88 820 violations), while six other drive-1 cores routed at 40 % (5.1, 1.1); `harden_ladder.sh` stops a hold retry whose repair logs `RSZ-0033` and tries the next margin at once (5.3) |
+| 6.18 | 2026-11-14 | from the inbox, reproduced: OSS CAD Suite's Yosys 0.70+219 hangs in `abc` without a terminal when `TMPDIR` has 36+ characters (Yosys #6448, fixed upstream after our build); `COLUMNS=1000`; `YOSYS_MAX_THREADS` (4, 1) |

@@ -7,6 +7,17 @@ in `inbox/`.
 
 ---
 
+## 2026-11-14: OSS CAD Suite's Yosys can hang; set COLUMNS=1000
+
+sky130 notes 6.18 (4): Yosys 0.70+219 from OSS CAD Suite 2026-10-24 waits forever in `abc`, with no error, when
+`TMPDIR` has 36 or more characters and there is no terminal (agent shells, `jobq` jobs). Agent sessions may set
+`TMPDIR` to a long scratch path. If you run this Yosys on its own (synthesis probes, area estimates), run it with
+`COLUMNS=1000`, or `TERM=xterm`, or a short `TMPDIR` such as `/tmp`. Add a timeout that kills the process group, and set
+`YOSYS_MAX_THREADS` to your job's threads (it runs several ABC processes by default). LibreLane and ORFS use their
+own Yosys 0.62, which did not hang. Fixed upstream on 2026-11-04 (Yosys PR #6451), after our build.
+
+---
+
 ## 2026-11-12: the ladder skips hold retries that cannot change anything
 
 sky130 notes 6.17:
