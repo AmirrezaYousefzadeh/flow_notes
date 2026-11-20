@@ -1,0 +1,68 @@
+{
+ "design": "sram_probe",
+ "minutes": 1,
+ "harden": {
+  "accepted_utilisation_pct": 30,
+  "attempts": [
+   {
+    "utilisation_pct": 30,
+    "density_pct": 40,
+    "minutes": 1,
+    "verdict": "pass"
+   }
+  ],
+  "cells": 566,
+  "tap_cells": 665,
+  "cell_area_um2": 6090.84,
+  "core_area_um2": 611627,
+  "hold_buffers": 4,
+  "repair_buffers": 116,
+  "setup_ws_ns": 115.55118817341281,
+  "hold_ws_ns": 0.17931944817917156,
+  "signoff_corners": 9,
+  "drc_errors": 0,
+  "power_grid_violations": 0,
+  "antenna_violating_nets": 10,
+  "slew_violations_nom_tt": 54,
+  "output_cap_load_fF": 33.442,
+  "versions": {
+   "librelane": "/media/hardware_design_tools/librelane-3.0.16",
+   "pdk": "open_pdks 8afc8346a57fe1ab7934ba5a6056ea8b43078e71",
+   "icarus": "Icarus Verilog version 14.0 (devel) (s20260301-664-g9cfecc9c9-dirty)",
+   "orfs": "/media/pdk/OpenROAD-flow-scripts-ef2cb37 7acd9816c",
+   "flow_notes": "b8bf699"
+  }
+ },
+ "measure": {
+  "p_total_uW": 2.449597926163805,
+  "p_leak_uW": 2.343067,
+  "p_dyn_uW": 0.10653092616380465,
+  "p_sta_uW": 12.858189999999999,
+  "root_clock_removed_uW": 10.408592073836195,
+  "clock_duty": 0.001396499998254375,
+  "window_s": 0.800000001,
+  "units": 200,
+  "unit": "bin",
+  "e_bin_nJ": 9.798391716903211,
+  "e_dyn_bin_nJ": 0.4261237051878732,
+  "sta_groups_uW": {
+   "sequential": 0.41228529999999997,
+   "combinational": 0.03353645,
+   "clock": 10.04676,
+   "macro": 2.365611
+  },
+  "macro_correction_uW": 0.021915200000000003,
+  "pin_activities": 85235,
+  "sdf_errors": 0,
+  "bit_exact": true,
+  "sim_mode": "sdf",
+  "gls_minutes": 0,
+  "versions": {
+   "librelane": "/media/hardware_design_tools/librelane-3.0.16",
+   "pdk": "open_pdks 8afc8346a57fe1ab7934ba5a6056ea8b43078e71",
+   "icarus": "Icarus Verilog version 14.0 (devel) (s20260301-664-g9cfecc9c9-dirty)",
+   "orfs": "/media/pdk/OpenROAD-flow-scripts-ef2cb37 7acd9816c",
+   "flow_notes": "b8bf699"
+  }
+ }
+}

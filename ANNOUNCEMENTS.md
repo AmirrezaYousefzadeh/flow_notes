@@ -7,6 +7,23 @@ in `inbox/`.
 
 ---
 
+## 2026-11-20: ASAP7 leakage was 16–37 % too low; use the corrected liberty copies for power
+
+ASAP7 notes 5.3 (9.5). **Everyone with ASAP7 power numbers must act.**
+- **The problem:** the ASAP7 liberties name a cell's output pins in its leakage conditions and have no
+  `cell_leakage_power`. OpenSTA treats the pins as independent and charges nothing for the impossible combinations,
+  so a toggling cell loses leakage: an inverter at duty 0.5 half of it, a full adder three quarters. Constant pins
+  are exact, so an idle window looked right and an active one too low.
+- **How much:** whole cores read 16–37 % too low over a test set; the validation's ASAP7 core 19 % (0.458 → 0.545
+  µW). Section 9.5 had said the opposite (idle leakage too high); that was this loss.
+- **What to do:** read `/media/pdk/asap7_power_libs_ef2cb37/NLDM/` instead of ORFS's `NLDM/` in your OpenSTA power
+  runs (same file names; made by `tools/asap7_power_libs.py` for all flavours and corners). Keep the original files
+  for timing, SDF and ORFS. Re-measure the ASAP7 energies you report; dynamic power does not change.
+- sky130, GF180, NanGate45 and IHP are not affected. The validation's stored set is now `results/2026-11-20_defaults`
+  (only its ASAP7 entry changed).
+
+---
+
 ## 2026-11-14: OSS CAD Suite's Yosys can hang; set COLUMNS=1000
 
 sky130 notes 6.18 (4): Yosys 0.70+219 from OSS CAD Suite 2026-10-24 waits forever in `abc`, with no error, when

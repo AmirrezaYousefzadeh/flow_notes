@@ -40,18 +40,23 @@ smaller core: `lmem16` is the same RTL and testbench with 16 instead of 64 hidde
 - It uses a 0.2 ns hold margin after CTS, by the owner's decision. With the default 0.1 ns, hold failed at ff
   (sky130 notes 5.1).
 
-## Stored set `results/2026-11-06_defaults`
+## Stored set `results/2026-11-20_defaults`
 
 The current defaults: LibreLane 3.0.16, open_pdks `8afc834`, ORFS `ef2cb37` (ASAP7 SRAM-Vt), OSS CAD Suite 2026-10-24
 (Icarus 14). Every check passes: DRC 0, setup and hold met (9 corners for sky130), SDF errors 0, testbenches pass.
 Every later set is compared with this one.
+
+It is the set of 2026-11-06 (`results/2026-11-06_defaults`, kept) with a new `min32_asap7`. Since 2026-11-20 the ASAP7
+power reads the leakage-corrected liberty copies (ASAP7 notes 9.5). The hardening is identical, and internal and
+switching power are byte-identical. Leakage rose 19.0 % (0.4577 → 0.5449 µW), so total power rose 18.3 %. The three
+sky130 results are unchanged.
 
 | design | accepted utilisation | cells | hold buffers | worst hold | power (window average) | run time |
 |---|---|---|---|---|---|---|
 | `sram_probe` | 30 % | 566 | 4 | +0.179 ns | 2.450 µW | 1 min |
 | `lmem16` | 30 % | 39 390 | 700 | +0.124 ns | 0.628 µW (2.51 nJ per bin) | 119 min |
 | `snn2_d` | 30 % | 35 702 | 1 | +0.125 ns | 0.384 µW | 140 min |
-| `min32_asap7` | 60 % | 16 667 | (ORFS) | +0.044 ns (TT) | 0.477 µW | 16 min |
+| `min32_asap7` | 60 % | 16 667 | (ORFS) | +0.044 ns (TT) | 0.564 µW (2026-11-06: 0.477) | 14 min |
 
 Cells exclude tap cells. The powers include leakage and the root-clock correction. Run times are for one `jobq` job
 each, with 4 threads, once the job had started. They depend on the machine's load and on the flow: a rerun on
@@ -65,7 +70,7 @@ label as long as the stored set's `trial`) reproduced every number of the four d
 design files of every hardening step of the three sky130 designs byte for byte (dates and paths aside). A second
 seeded hardening of `lmem16`, in `work_seed0b` (a path one character longer), broke one tie in CTS the other way (two
 clock buffers mirrored); the next step erased it, and it too ended on the stored layout. **To compare with a stored
-set to the last digit, use a label as long as the stored set's** (`trial`, 5 characters): with another length, a tie
+set to the last digit, use a label as long as the stored set's** (5 characters: `trial`, and `fixlk` for the ASAP7 entry): with another length, a tie
 can move a number slightly, until LibreLane ships an OpenROAD with the upstream fixes. One unseeded rerun with the
 default 0.1 ns margin did not reproduce an earlier one (worst hold −0.003 instead of −0.057 ns).
 

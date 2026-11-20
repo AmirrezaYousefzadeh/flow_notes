@@ -1,6 +1,6 @@
 # ASAP7 flow notes: synthesis, place and route with ORFS, gate-level simulation and power
 
-**Version 5.2, last updated 2026-11-03.** The full history is in "Version history" at the end.
+**Version 5.3, last updated 2026-11-20.** The full history is in "Version history" at the end.
 
 Read this before you synthesise, place and route or measure anything on ASAP7 (the predictive 7 nm library) on this
 machine. It is written for engineers and AI agents. It collects what was learned measuring several neural-network
@@ -45,7 +45,7 @@ checklist in section 11.
 | a `SYNTH_KEEP_MODULES` name that matches no module | the module flattened, only a warning | 5 |
 | Icarus reading ps as ns, rounding to 10 ps, a zero ICG rise delay | stalled runs; glitch factors off | 8.1 |
 | escaped names from `keep_hierarchy` in the SPEF | 4.87 million parasitic entries dropped | 9.4 |
-| leakage taken from an idle window instead of the measured one | 23–25 % too high | 9.5 |
+| power with the flow's liberties (output pins in the leakage conditions) | leakage 16–37 % too low, the lower the more the design toggles | 9.5 |
 
 Contents:
 0. Ground rules on this machine
@@ -91,6 +91,7 @@ at TT, `validation/`). `ANNOUNCEMENTS.md` says when they change.
 | OpenROAD, Yosys, KLayout, OpenSTA | not built inside ORFS; taken from the LibreLane Nix shell: OpenROAD `dcf3613` (73 commits newer than ORFS's own pointer), OpenSTA 2.7.0, Yosys 0.62, KLayout 0.30.7 | `nix --extra-experimental-features "nix-command flakes" develop --accept-flake-config /media/hardware_design_tools/librelane -c ...` |
 | ASAP7 platform | `<ORFS>/flow/platforms/asap7` | `PLATFORM=asap7`, `ASAP7_USE_VT=RVT\|LVT\|SLVT\|SRAM` |
 | liberty (NLDM) | `platforms/asap7/lib/NLDM/`: `asap7sc7p5t_{AO,INVBUF,OA,SIMPLE}_<flavour>_<corner>_nldm_*.lib.gz` and `..._SEQ_..._nldm_220123.lib` (SEQ not gzipped); the `*_SRAMVT_*` names are aliases of the `*_SRAM_*` files | OpenSTA reads `.gz` directly |
+| liberties for OpenSTA power | `/media/pdk/asap7_power_libs_ef2cb37/NLDM/`: leakage-corrected copies of `NLDM/`, same file names (`tools/asap7_power_libs.py`) | for power only, 9.5 |
 | upstream library | `/media/pdk/asap7sc7p5t_28` (sparse clone, `472f7b3`): `LIB/NLDM/*.7z`, `Verilog/` (all flavours) | |
 | Verilog cell models | ORFS ships RVT TT only (`platforms/asap7/verilog/stdcell`); SRAM-Vt from `/media/pdk/asap7sc7p5t_28/Verilog` | see section 8 before simulating |
 | Icarus model copies | `/media/pdk/icarus_sdf_models/asap7sc7p5t_*_{RVT,SRAM}_TT_*_sdf.v` (notifier initialised) | **not validated** |
@@ -192,8 +193,8 @@ ratios (4.4×, 9.7×, 10.1× between neighbours) agree with the off-currents of 
   them nowhere. The "0.77 V supply" in ORFS IR reports is the FF voltage, not an IR-drop figure.
 - **SS is leakage-dominated.** At 100 °C, the leakage of a 20 k-cell RVT core was 46.5 µW against 3.3 µW at TT, while
   its dynamic energy dropped 35 %: total energy per bin 0.175 nJ at SS against 0.058 nJ at TT. Report dynamic and
-  leakage separately when you show SS. (These numbers use the post-reset idle leakage of 9.5 and probably predate
-  the fix of 9.2: the trend holds, the values do not.)
+  leakage separately when you show SS. (These numbers use a post-reset idle window, whose leakage the flow's
+  liberties give nearly right (9.5), and probably predate the fix of 9.2: the trend holds, the values do not.)
 
 **3.4 Units: the most common ASAP7 error.**
 
@@ -395,7 +396,8 @@ design transfers to another only if the arithmetic share is similar.
 
 ## 9. Power with OpenSTA
 
-**9.1 Setup.** Read all five liberty files of the flavour and corner, the netlist and the SPEF; give the clock period
+**9.1 Setup.** Read all five liberty files of the flavour and corner (the leakage-corrected copies, 9.5), the netlist
+and the SPEF; give the clock period
 in ps; set unannotated inputs to activity 0 (sky130 notes 8.1). OpenSTA 2.7 converts `set_power_activity -activity`
 with the fastest defined clock (`-clock` is ignored): define only the clock the activities were normalised to, or
 write `-density`. This matters for designs with a separate write clock (section 4).
@@ -423,10 +425,36 @@ which invalidated its power breakdown. Fix: `tools/legal_names.py` (sky130 notes
 handles both since 2026-10-25 (earlier versions missed 187 893 entries of one core). OpenSTA 2.7 reads escaped names
 itself (sky130 notes 5.4), so with the default tools the renaming matters for Icarus.
 
-**9.5 Leakage depends on cell state.** ASAP7 per-state leakage differs by large factors, unlike sky130, GF180 or
-NanGate45. In a 20 k-cell RVT core: idle after reset 3.30 µW, decode window 2.35 µW, real-time run 2.64 µW; in SRAM-Vt
-idle 0.719 µW, real time 0.583 µW (−18 %). Take leakage from the same window as the activity, never from a post-reset
-idle run.
+**9.5 Read the leakage-corrected liberty copies for power.**
+- **The problem:** the ASAP7 liberties write each leakage state of a cell together with its outputs (`INVx1`:
+  `(A * !Y)` and `(!A * Y)`; `FAx1`: `(!A * !B * !CI * CON * SN)`), and they have no `cell_leakage_power`.
+  - OpenSTA 2.7.0 evaluates a condition as the product of its pins' duties, as if the pins were independent. It
+    charges `cell_leakage_power` for the probability that no condition matches, so here it charges nothing. Current
+    upstream OpenSTA does the same.
+  - The outputs depend on the inputs, so most of that probability belongs to impossible states, and it is lost. At
+    duty 0.5, an `INVx1` gets 5.15 pW for states of 9.91 and 10.70 pW, and an `FAx1` 13.3 pW for states of 47.6 to
+    67.0 pW. Constant pins give the exact value.
+  - So a design's leakage reads lower the more it toggles, and an idle window reads nearly right.
+- **How much:** the validation's 17 000-cell SRAM-Vt core read 0.458 instead of 0.545 µW. On twelve adder-tree cores
+  of 11 000 to 101 000 cells, the corrected leakage over a whole test set was 16 to 37 % higher, and for a silent
+  input only 0.05 to 0.2 % higher. With correct conditions, leakage hardly depends on the activity: within 0.6 %
+  between a silent sample and a whole test set.
+- **Sequential cells too:** the latches (`DHL`, `DLL`), the clock gates (`ICG`) and `DFFASRHQN` list their output or
+  state pin and skip the impossible combinations.
+- **The fix:** read `/media/pdk/asap7_power_libs_ef2cb37/NLDM/` for power. It has the same file names as ORFS's
+  `NLDM/` and was made by `tools/asap7_power_libs.py` (all 88 standard-cell liberties). In these copies:
+  - combinational conditions keep only the inputs, every input combination once (checked);
+  - every cell has its unconditional leakage as `cell_leakage_power`, which OpenSTA charges for what the sequential
+    conditions still miss.
+  Only leakage changes. Keep the original files for timing, SDF and ORFS.
+- **The other liberties here are not affected:**
+  - sky130_fd_sc_hd: its combinational conditions name inputs only, and every cell has a `cell_leakage_power`;
+  - GF180 (`mcu7t5v0`) and NanGate45: every condition set is complete;
+  - IHP sg13g2: 40 cells name outputs, but every cell has a `cell_leakage_power`, which OpenSTA charges for the
+    missing states (a cell average, so nothing is lost).
+- Before 2026-11-20 this section said the opposite: idle leakage was 18–29 % above that of a decode window. That
+  difference was this loss, and the old pitfalls row ("idle window 23–25 % too high") was reversed. Measured
+  ASAP7 energies that rely on leakage need re-measuring with the copies.
 
 **9.6 Root-clock correction** (sky130 notes 8.2) applies to ASAP7 designs that stop their clock, with two changes
 (`tools/root_clock_correction_multipdk.py` has both):
@@ -483,6 +511,7 @@ Everything in sky130 notes section 10, plus:
 | ICGs without a clock input in `6_final.v` (`check_clock_gates.py`) | 0 (6.4) |
 | Icarus model precision | 1 ps, not 10 ps |
 | annotated ICG `CLK→GCLK` rise delay | non-zero |
+| liberties for power | the leakage-corrected copies (9.5) |
 | leakage window | the same window as the activity |
 | per-cell leakage computed from the liberty | VDD groups only |
 
@@ -491,7 +520,8 @@ Everything in sky130 notes section 10, plus:
 - **A 20 k-cell pruned decoder core at 5 MHz, TT** (RVT / SRAM-Vt): 19 954 / 19 604 logic cells (1 491 flip-flops,
   3 ICGs), 0.00245 / 0.00237 mm², leakage 2.64 / 0.583 µW, dynamic energy 0.0876 / 0.0820 nJ per bin (the same core
   on sky130: 2.81 nJ). Setup slack about 120 ns at 200 ns. Clock skew 64–158 ps. These include the 10 ps rounding of
-  8.1 and were measured before the ICG rise-delay fix of 8.1 (2026-10-28).
+  8.1, were measured before the ICG rise-delay fix of 8.1 (2026-10-28), and took their leakage from the flow's
+  liberties (about 16 to 37 % low, 9.5).
 - **f_max at SS** of that core: 667 MHz RVT, 480 MHz SRAM-Vt. An earlier 2.3 / 1.8 GHz came from runs with stopped
   clock propagation and is not trusted.
 - **A large latch-memory core**: the weight memory was about 86 % of the area.
@@ -525,3 +555,4 @@ General questions that no measurement here has answered yet. Report answers thro
 | 5.0 | 2026-10-30 | full review against the ORFS `ef2cb37` sources: start-here and silent-error table; history moved to the end. Corrected for this ORFS: the flavour check reads the logs (1, 11); `ROUTING_LAYER_ADJUSTMENT` is ignored on ASAP7, use `FASTROUTE_TCL` (6.5); `CTS_BUF_LIST` exists (6.4); `REMOVE_ABC_BUFFERS` deprecated (5); `EQUIVALENCE_CHECK` does not cover synthesis (5); routing rerun and congestion messages (6.5); no physical cells in `6_final.v` (8.1, 9.3); the SPEF `$` spelling (9.4); hold buffers are `BUFx2` (9.6). New: `-D OPENROAD_CLKGATE` or the gates become wires (4); never `SYNTH_MOCK_LARGE_MEMORIES` (5); 1 ps model copies with `sed` (8.1); OpenSTA 2.7 converts activities with the fastest clock (9.1); watchdogs and frozen jobs (6.6); ICG clock-pin power is state-dependent (9.6); SS numbers flagged (3.3) |
 | 5.1 | 2026-11-01 | monthly review. Upstream: a `SYNTH_KEEP_MODULES` name that matches nothing flattens the module silently in `ef2cb37` (5); ORFS #3034's fix covers an empty `DISPLAY` only (1). From the projects: own sign-off on the design SDC must propagate the clocks (7.1, 6.1); OpenSTA's Tcl slack commands return seconds (3.4); the timing-driven placement crashes were probably the faulty CPU 0 (6.5); runtime and memory of 570–590 k-instance cores, `6_report` near detailed routing's memory, swap measured (10); two open questions answered (13); three silent-error rows |
 | 5.2 | 2026-11-03 | CTS of OpenROAD `dcf3613` can leave a clock gate without its clock; check `6_final.v` with `check_clock_gates.py` (6.4, 11) |
+| 5.3 | 2026-11-20 | from the inbox, reproduced: OpenSTA loses the leakage of toggling ASAP7 cells (output pins in the leakage conditions, no `cell_leakage_power`): 16–37 % too low; leakage-corrected copies in `/media/pdk/asap7_power_libs_ef2cb37` (`tools/asap7_power_libs.py`) for power; 9.5 corrected (it had the direction reversed), pitfalls row, 1, 9.1, 11, 12 |

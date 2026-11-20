@@ -3,7 +3,8 @@
 # utilisations (dense to sparse), accepted on routing DRC 0 and an own setup and hold check at TT, SS and FF with the
 # extracted parasitics (tools/hold_sta.tcl, the run's SDC); then an SDF from OpenSTA, Icarus with 1 ps copies of the
 # vendor models and tools/asap7_seq_icarus.v, toggles, OpenSTA power (run A, measured activities; run B, zero data)
-# and the multi-PDK root-clock correction.
+# with the leakage-corrected liberty copies (ASAP7_POWER_LIBS, ASAP7 notes 9.5) and the multi-PDK root-clock
+# correction.
 # Usage: asap7_run.sh <design dir> <work dir>
 # Writes <work dir>/harden/harden.json and <work dir>/measure/measure.json; exit status 0 when every check passed.
 set -euo pipefail
@@ -15,9 +16,11 @@ VT="${ORFS_VT:-SRAM}"
 case "$VT" in SRAM) LIBVT=SRAMVT; TAG=SRAM ;; RVT) LIBVT=RVT; TAG=R ;; LVT) LIBVT=LVT; TAG=L ;; SLVT) LIBVT=SLVT; TAG=SL ;;
   *) echo "unknown ORFS_VT $VT"; exit 2 ;; esac
 NLDM="$ORFS/flow/platforms/asap7/lib/NLDM"
-libs() {   # <TT|FF|SS>: the five liberties of the flavour at that corner
-  local c="$1" f out=""
-  for f in AO INVBUF OA SEQ SIMPLE; do out+=" $(ls "$NLDM"/asap7sc7p5t_${f}_${LIBVT}_${c}_nldm_*.lib* | sort -r | head -n 1)"; done
+# for OpenSTA power only: copies whose leakage OpenSTA evaluates correctly (tools/asap7_power_libs.py, ASAP7 notes 9.5)
+POWER_NLDM="${ASAP7_POWER_LIBS:-/media/pdk/asap7_power_libs_ef2cb37/NLDM}"
+libs() {   # <TT|FF|SS> [directory]: the five liberties of the flavour at that corner
+  local c="$1" d="${2:-$NLDM}" f out=""
+  for f in AO INVBUF OA SEQ SIMPLE; do out+=" $(ls "$d"/asap7sc7p5t_${f}_${LIBVT}_${c}_nldm_*.lib* | sort -r | head -n 1)"; done
   echo $out
 }
 export QT_QPA_PLATFORM=offscreen
@@ -104,6 +107,7 @@ PY
 M="$WORK/measure"; mkdir -p "$M"; OUT="$M"; cd "$M"
 tb_defines
 TT_LIBS="$(libs TT)"
+TT_POWER_LIBS="$(libs TT "$POWER_NLDM")"
 echo "==> $NAME: SDF from OpenSTA, plain names, 1 ps models"
 LIB_SC="$TT_LIBS" TOP="$TOP" NETLIST="$R/6_final.v" SPEF="$R/6_final.spef" PERIOD_NS="$(( CLOCK_NS * 1000 ))" \
   CLK_PORT="$CLOCK_PORT" SDF_OUT="$M/orig.sdf" in_librelane sta -no_splash -exit "$TOOLS/write_sdf_sta.tcl" > write_sdf.log 2>&1
@@ -144,7 +148,7 @@ python3 "$TOOLS/toggles_to_activity.py" toggles.tsv --scope "$TB_TOP/$DUT" --per
   -o activity.tcl --summary activity_summary.json
 for run in A B; do
   mkdir -p "sta_$run"
-  ( export TOP NETLIST="$M/design.nl.v" SPEF="$M/design.spef" LIB_SC="$TT_LIBS" PERIOD_NS="$(( CLOCK_NS * 1000 ))" \
+  ( export TOP NETLIST="$M/design.nl.v" SPEF="$M/design.spef" LIB_SC="$TT_POWER_LIBS" PERIOD_NS="$(( CLOCK_NS * 1000 ))" \
       CLK_PORT="$CLOCK_PORT" OUT="$M/sta_$run" ACT_TCL="$M/activity.tcl"
     [[ $run == B ]] && export ZERO_DATA=1
     in_librelane sta -no_splash -exit "$TOOLS/power_sta.tcl" ) > "sta_$run/sta.log" 2>&1 || { tail -n 20 "sta_$run/sta.log"; exit 1; }
@@ -168,9 +172,9 @@ PY
 echo "==> root-clock correction (clock duty $DUTY)"
 python3 "$TOOLS/root_clock_correction_multipdk.py" design.nl.v "$CLOCK_PORT" "$DUTY" sta_A/power_vcd_by_instance.rpt \
   sta_B/power_vcd_by_instance.rpt -o root_clock_correction.json | tail -n 2
-python3 - "$M" "$DUTY" "$UNITS" "$UNIT_NAME" "$SIM_MIN" "$BITEXACT" "$(versions_json)" <<'PY'
+python3 - "$M" "$DUTY" "$UNITS" "$UNIT_NAME" "$SIM_MIN" "$BITEXACT" "$(versions_json)" "$POWER_NLDM" <<'PY'
 import json, sys
-m_dir, duty, units, unit, sim_min, bitexact, versions = sys.argv[1:]
+m_dir, duty, units, unit, sim_min, bitexact, versions, power_libs = sys.argv[1:]
 corr = json.load(open(f"{m_dir}/root_clock_correction.json"))
 act = json.load(open(f"{m_dir}/activity_summary.json"))
 total, window_s = corr["corrected_report"], act["duration_s"]
@@ -181,7 +185,7 @@ m = {"p_total_uW": total["total"] * 1e6, "p_leak_uW": total["leakage"] * 1e6,
 m[f"e_{unit}_nJ"] = m["p_total_uW"] * window_s / int(units) * 1e3
 m[f"e_dyn_{unit}_nJ"] = m["p_dyn_uW"] * window_s / int(units) * 1e3
 m.update({"pin_activities": act["pin_variables"], "sdf_errors": 0, "bit_exact": json.loads(bitexact), "sim_mode": "sdf",
-          "gls_minutes": int(sim_min), "versions": json.loads(versions)})
+          "gls_minutes": int(sim_min), "power_liberties": power_libs, "versions": json.loads(versions)})
 json.dump(m, open(f"{m_dir}/measure.json", "w"), indent=1)
 print(f"P {m['p_total_uW']:.4f} µW (leakage {m['p_leak_uW']:.4f}, dynamic {m['p_dyn_uW']:.4f}; P_STA {m['p_sta_uW']:.4f}); "
       f"E/{unit} {m[f'e_{unit}_nJ']:.5f} nJ")
